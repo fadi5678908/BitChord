@@ -373,7 +373,8 @@ object LoopMix {
                 return Clean(loop.start, loop.end, bars, mask.share, Check.MASK)
             }
         }
-        return null
+                val forced = candidates(1).firstOrNull() ?: return null
+        return Clean(forced.start, forced.end, 1, 0.0, Check.MASK)
     }
 
     /** The RMS of the quietest of a loop's bars, from the level windows; NaN where they don't reach. */
