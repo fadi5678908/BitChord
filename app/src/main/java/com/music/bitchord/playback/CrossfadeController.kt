@@ -3137,7 +3137,7 @@ class CrossfadeController(
         // keeps the outgoing kick whole. So the low end still changes hands
         // once, on a beat — only one kick is ever playing.
         val handover = ((progress - (render.filterSwapAt - render.swapWidth)) / render.swapWidth).coerceIn(0.0, 1.0)
-        tracks.outgoing(cutoff.toFloat(), bassCutoff(handover))
+        tracks.outgoing(4000f, 300f)
         tracks.incoming(TransitionFilterProcessor.OPEN_HZ, maxOf(entryCorner, bassCutoff(1.0 - handover)))
     }
 
