@@ -634,7 +634,7 @@ private fun phraseBarPlan(
         // A matched pair hands the low end over on a beat and stays open; an
         // unmatched pair has no shared grid, so it rides the closing low-pass —
         // the same split [mixPlan] makes.
-        filterSweep = if (beatmatched) 0.0 else FILTER_SWEEP,
+        filterSweep = FILTER_SWEEP,
         filterVariant = FilterTransitionVariant.SWEEP,
         vocalOverlap = vocalOverlap,
         outgoingBpm = outgoingBpm,
@@ -643,7 +643,7 @@ private fun phraseBarPlan(
         // Tempo is fixed once either deck is audible; see [mixPlan].
         phaseLock = false,
         echoSeconds = 0.0,
-        transitionStyle = if (beatmatched) TransitionStyle.DJ_BLEND else TransitionStyle.DJ_FILTER,
+        transitionStyle = TransitionStyle.DJ_FILTER,
         reason = "smart-phrase-bars",
     )
 }
