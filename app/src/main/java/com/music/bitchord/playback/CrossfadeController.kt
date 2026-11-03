@@ -2250,7 +2250,7 @@ class CrossfadeController(
         isSourceBacked(current) || isSourceBacked(next) -> "analysed off another recording"
         loopPortOf(player)?.supportsLoopMix != true -> "this output can't take it"
         loopPortOf(standby()) == null -> "no standby sink"
-        else -> null
+       else -> "off"
     }
 
     /** A track whose analysis reads a matched YouTube recording rather than what plays. */
