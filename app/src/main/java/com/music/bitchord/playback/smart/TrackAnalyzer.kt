@@ -299,8 +299,8 @@ class TrackAnalyzer(private val context: Context, private val cache: AudioCache)
      * describe its entry — which is the half the listener hears at the moment
      * of the blend.
      *
-     * So a track with enough of a head on disk gets [analyzeHead] first: beat
-     * grid only, over the opening window, which is all the incoming side is
+     * So a track with enough of a head on disk gets [analyzeHead] first: beat,
+     * energy and vocal evidence over the opening window, which is all the incoming side is
      * read for. That result is provisional and is replaced by the whole-track
      * [analyze] as soon as the remaining bytes arrive.
      *
@@ -447,7 +447,7 @@ class TrackAnalyzer(private val context: Context, private val cache: AudioCache)
                         shortDecodes.remove(trackId)
                         // Only the whole-track pass is persisted. A head result
                         // is missing everything past its window — the outro, the
-                        // mix-out anchor, the energy curve — and storing one
+                        // mix-out anchor, the full energy curve — and storing one
                         // would freeze a deliberately partial answer in place of
                         // the complete one that supersedes it minutes later.
                         store.save(trackId, whole)
@@ -738,6 +738,17 @@ class TrackAnalyzer(private val context: Context, private val cache: AudioCache)
             mixInTime = entry?.mixInTime ?: 0.0,
             mixInCandidates = entry?.mixInCandidates.orEmpty(),
             headBeats = grid?.let { BeatSide(it.beats, it.downbeats, it.bpm, it.beatConfidence) },
+        ).withOpeningEvidence(
+            OpeningEvidence(
+                start = head.start,
+                seconds = head.seconds,
+                energy = entry?.energyCurve.orEmpty(),
+                lowEnergy = entry?.lowEnergyCurve.orEmpty(),
+                heuristicVocalMask = entry?.vocalActivityMask.orEmpty(),
+                vocalProbability = entry?.vocalProbability ?: 0.0,
+                vocalWindow = head.vocalWindow,
+                levelWindow = head.levelWindow,
+            ),
         )
     }
 
@@ -1334,7 +1345,8 @@ class TrackAnalyzer(private val context: Context, private val cache: AudioCache)
         // process was dying. Same reasoning [derived] already had, one level further out.
         val inputs = regionInputs(stereo, seconds, deriveFeatures)
 
-        val vocalValues = if (features != null) vocalValues(stereo) else null
+        // The provisional head needs vocal evidence too, before the full download completes.
+        val vocalValues = if (features != null || deriveFeatures) vocalValues(stereo) else null
         return Region(
             grid = inputs.forModel?.let { tracker.track(it, offsetSeconds = actualStart) },
             vocalMask = if (features != null && vocalValues != null) vocalMask(vocalValues, features, actualStart) else null,
@@ -1342,7 +1354,7 @@ class TrackAnalyzer(private val context: Context, private val cache: AudioCache)
             features = inputs.derived,
             start = actualStart,
             vocalWindow = vocalValues?.let { CurveWindow(actualStart, VocalSpectrogram.frameRate, it) },
-            levelWindow = if (features != null) levelCurve(stereo, actualStart) else null,
+            levelWindow = if (features != null || deriveFeatures) levelCurve(stereo, actualStart) else null,
         )
     }
 

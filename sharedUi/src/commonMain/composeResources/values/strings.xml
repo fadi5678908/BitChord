@@ -278,7 +278,7 @@
     <string name="mix_view_seconds">%1$d sec</string>
     <string name="mix_view_bpm">%1$d bpm</string>
     <string name="automix_beat_matched">Beat-matched transition</string>
-    <string name="automix_smooth_transition">Smooth transition</string>
+    <string name="automix_smooth_transition">Crossfade · fallback</string>
     <string name="automix_transition_paused">Transition paused</string>
     <string name="automix_transition_ended">Transition ended</string>
     <string name="automix_transition_percent">%1$d%</string>

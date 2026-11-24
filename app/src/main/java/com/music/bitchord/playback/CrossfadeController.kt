@@ -33,6 +33,7 @@ import com.music.bitchord.playback.smart.TransitionStyle
 import com.music.bitchord.playback.smart.TransitionTrackInfo
 import com.music.bitchord.playback.smart.echoTailSeconds
 import com.music.bitchord.playback.smart.forPlaybackStart
+import com.music.bitchord.playback.smart.routingReason
 import com.music.bitchord.playback.smart.AutomixSessionPlanner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -1105,7 +1106,10 @@ class CrossfadeController(
                 TAG,
                 "plan ${currentItem.mediaId}->${nextItem.mediaId}: $verdict " +
                     "bpm=${currentAnalysis.bpm}/${nextAnalysis.bpm} " +
-                    "conf=${currentAnalysis.beatConfidence}/${nextAnalysis.beatConfidence}",
+                    "conf=${currentAnalysis.tailBeats?.confidence ?: currentAnalysis.beatConfidence}/" +
+                    "${nextAnalysis.headBeats?.confidence ?: nextAnalysis.beatConfidence} " +
+                    "evidence=${currentAnalysis.energyCurve.size}/${nextAnalysis.energyCurve.size} " +
+                    "masks=${currentAnalysis.vocalActivityMask.size}/${nextAnalysis.vocalActivityMask.size}",
             )
         }
 
@@ -1645,6 +1649,8 @@ class CrossfadeController(
                 render = Render(vocalOverlap = adjusted.vocalOverlap, advanced = true)
                 filters.open()
                 planInFlight = adjusted
+                lastSmartPlan = adjusted
+                Log.d(TAG, "Automix start fallback: ${adjusted.routingReason} at=${out.currentPosition}ms")
             }
         }
         startFade()
@@ -2713,16 +2719,18 @@ class CrossfadeController(
             val inSeconds = (planned.out.loopStart - player.currentPosition / 1000.0).coerceAtLeast(0.0)
             return "Automix · loop mix in ${ceil(inSeconds).toInt()} s · ${describeLoop(planned)}"
         }
-        val plan = lastSmartPlan
-        if (plan != null && !plan.blocked && next != null && AppSettings.smartTransitionWindow.value != null) {
+        // Show the route even without the marker: a head-only next track intentionally
+        // cannot authorize the outgoing marker, but its fallback still needs a visible reason.
+        val plan = planInFlight.takeIf { smartFadeActive } ?: lastSmartPlan
+        if (plan != null && !plan.blocked && (next != null || smartFadeActive)) {
             val inSeconds = ((lastSmartPlanStartMs - player.currentPosition) / 1000.0).coerceAtLeast(0.0)
             val whenText = if (inSeconds > 0) "in ${ceil(inSeconds).toInt()} s" else "now"
             val bars = if (plan.beatSeconds > 0) (plan.fadeSeconds / (4 * plan.beatSeconds)).roundToInt() else 0
             val length = if (bars > 0) "$bars bars" else "${"%.1f".format(Locale.ROOT, plan.fadeSeconds)} s"
-            val why = plan.policyReasons.firstOrNull()?.let { " · $it" }.orEmpty()
+            val why = " · ${plan.routingReason}"
             val noLoop = loopRefusal?.let { " · no loop: $it" }.orEmpty()
             return when (plan.transitionStyle) {
-                TransitionStyle.EQUAL_POWER -> "Automix · crossfading $whenText · ${"%.0f".format(Locale.ROOT, plan.fadeSeconds)} s$why$noLoop"
+                TransitionStyle.EQUAL_POWER -> "Automix · Crossfade (fallback) $whenText · ${"%.1f".format(Locale.ROOT, plan.fadeSeconds)} s$why$noLoop"
                 TransitionStyle.DJ_FILTER -> "Automix · filter mix $whenText · $length$why$noLoop"
                 else -> {
                     val rate = plan.incomingPlaybackRate

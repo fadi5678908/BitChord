@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="automix_beat_matched">انتقال متزامن مع الإيقاع</string>
-    <string name="automix_smooth_transition">انتقال سلس</string>
+    <string name="automix_smooth_transition">تداخل صوتي احتياطي · Crossfade</string>
     <string name="automix_transition_paused">الانتقال متوقف مؤقتًا</string>
     <string name="automix_transition_ended">انتهى الانتقال</string>
     <string name="automix_transition_percent">%1$d٪</string>

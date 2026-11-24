@@ -271,3 +271,35 @@ in to GitHub and will expire according to the repository artifact retention.
    incoming decoder. Listen for dropouts, unnatural speed changes or early cuts.
 7. Remember that editor drafts intentionally do not affect audio yet: four-stem
    separation, custom preview and prepared-stem playback remain unimplemented.
+
+## Follow-up: streamed incoming tracks could stay on crossfade
+
+A phone report said Automix sounded like ordinary crossfade. Inspection found
+that `analyzeHead` published a beat grid but dropped its already-derived energy
+and DSP vocal evidence; `region(... deriveFeatures = true)` also did not run the
+vocal model. This is the common streamed-incoming path before a complete file
+is cached. Adaptive candidates require vocal evidence on both sides, so they
+could not rescue a legacy entry rejected by the natural intro-preservation rule.
+This is a reproduced code defect, not proof of the sole cause on that phone.
+
+The head pass now retains bounded energy/low-band curves, runs the existing
+vocal tracker on the same decoded opening, and publishes model vocal and level
+windows. `withOpeningEvidence` aligns source coordinates and masks, falls back
+to scaled measured DSP values where the model ends, leaves genuinely unknown
+values non-finite, and never extends the opening into an unmeasured outro. No
+new model or four-stem reconstruction is introduced. This adds one existing
+vocal inference to a provisional head analysis, not to each playback tick.
+
+`OpeningEvidenceTest` adds eight regression tests. A full planner fixture
+reproduces **EQUAL_POWER / natural-preserve-intro** with a grid-only incoming
+head, then produces **DJ_BLEND / adaptive-search:61** after its measured opening
+evidence is retained. This does not relax confidence, tempo, intro, key or
+vocal safety gates. All 106 isolated Kotlin methods passed locally.
+
+Runtime diagnostics now prefer the final natural/late-buffer fallback reason,
+show the selected route even when the transition marker is hidden, and report
+late decoder downgrades using the actual armed plan. The fallback caption says
+**Crossfade · fallback**, rather than implying every visible handoff is a
+beatmatched mix. The planned search still legitimately chooses fallback for
+incompatible or unmeasured pairs. Device listening with the reported song pair
+is necessary to distinguish those cases from remaining bugs.
