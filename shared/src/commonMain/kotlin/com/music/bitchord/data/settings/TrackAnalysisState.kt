@@ -109,8 +109,10 @@ class MixTransitionView(
     val fadeIn: FloatArray,
     /** Where in the blend, 0..1, the low end changes hands; negative when it does not. */
     val bassSwapAt: Float = -1f,
+    /** Explicit renderer mode: having beat marks alone does not mean the pair is beatmatched. */
+    val beatMatched: Boolean = false,
 ) {
     fun withDecks(outgoing: MixDeck, incoming: MixDeck) = MixTransitionView(
-        outgoing, incoming, outStart, outEnd, inStart, inEnd, beats, beatMarks, fadeOut, fadeIn, bassSwapAt,
+        outgoing, incoming, outStart, outEnd, inStart, inEnd, beats, beatMarks, fadeOut, fadeIn, bassSwapAt, beatMatched,
     )
 }

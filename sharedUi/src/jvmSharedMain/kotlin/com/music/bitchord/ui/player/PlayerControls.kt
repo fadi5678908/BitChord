@@ -204,7 +204,7 @@ internal fun PlayerScrubber(
     durationMs: Long,
     /** A version switch's wait, drawn along the bar — see [ThinSlider.loading]. */
     loading: Boolean,
-    /** An analysed Automix handoff, drawn as a travelling sheen. */
+    /** An audible Automix overlap, drawn as a travelling sheen. */
     mixing: Boolean,
     transitionWindow: ClosedFloatingPointRange<Float>?,
     onScrub: (Float) -> Unit,
@@ -279,24 +279,27 @@ internal fun PlayerScrubber(
  */
 @Composable
 private fun MixingLabel(pulse: MixPulse, modifier: Modifier = Modifier) {
-    Text(
-        text = stringResource(Res.string.mixing),
+    Row(
         modifier = modifier
-            // Opens the mix view. Plain text that takes taps: no padding, no
-            // ripple, so it lays out exactly as the label always did and
-            // nothing around it moves when it appears.
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() },
             ) { MixViewRequest.open = true }
             .graphicsLayer { alpha = pulse.cover * pulse.alpha(1f, restShare = MIXING_LABEL_REST) },
-        style = MaterialTheme.typography.labelMedium.copy(
-            fontWeight = FontWeight.Medium,
-            fontSize = (MaterialTheme.typography.labelMedium.fontSize.value + BADGE_SIZE_BUMP).sp,
-        ),
-        color = LocalPlayerTint.current.copy(alpha = 0.85f),
-        maxLines = 1,
-    )
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AutomixHandoffMark(pulse)
+        Spacer(Modifier.width(5.dp))
+        Text(
+            text = stringResource(Res.string.mixing),
+            style = MaterialTheme.typography.labelMedium.copy(
+                fontWeight = FontWeight.Medium,
+                fontSize = (MaterialTheme.typography.labelMedium.fontSize.value + BADGE_SIZE_BUMP).sp,
+            ),
+            color = LocalPlayerTint.current.copy(alpha = 0.85f),
+            maxLines = 1,
+        )
+    }
 }
 
 /** How far "Upgrading quality" fades between breaths, and how long each half takes. */

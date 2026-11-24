@@ -263,7 +263,7 @@ interface PlayerSettingsSource {
      */
     val automixDetail: StateFlow<String?>
     val smartFadeEnabled: StateFlow<Boolean>
-    /** True only while an analysed Automix transition is audibly mixing two tracks. */
+    /** True while Automix audibly overlaps two tracks, including a safe fallback fade. */
     val smartMixInProgress: StateFlow<Boolean>
     /** The Automix blend in flight, for the scrubber's beat glow; null between blends. */
     val smartMixBlend: StateFlow<MixBlend?>

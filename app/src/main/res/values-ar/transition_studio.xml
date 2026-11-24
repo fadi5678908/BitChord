@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="transition_studio">استوديو الانتقالات</string>
+    <string name="transition_studio_entry">تخصيص الانتقالات · محرّر المسودات</string>
+    <string name="transition_close">إغلاق</string>
+    <string name="transition_draft_badge">مسودة محلية · لا تُطبَّق على التشغيل</string>
+    <string name="transition_model_notice">صمّم انتقالًا لهذه القائمة فقط. فصل الغناء والآلات على الهاتف غير متاح في هذا الإصدار. تحفظ هذه الأدوات تصميمًا فقط، ولا تفصل الصوت أو تغيّره. لا يُرفع أي صوت.</string>
+    <string name="transition_previous">السابق</string>
+    <string name="transition_next">التالي</string>
+    <string name="transition_pair_number">%1$d / %2$d</string>
+    <string name="transition_outgoing">الأغنية الخارجة</string>
+    <string name="transition_incoming">الأغنية الداخلة</string>
+    <string name="transition_timing">توقيت الانتقال</string>
+    <string name="transition_overlap">مدة التداخل</string>
+    <string name="transition_trim">تجاوز من نهاية الأغنية الخارجة</string>
+    <string name="transition_cue">موضع بدء الأغنية الداخلة</string>
+    <string name="transition_layers">تصميم انتقال طبقات الصوت</string>
+    <string name="transition_design_curves">منحنيات تصميمية — ليست موجات صوتية</string>
+    <string name="transition_curve_legend">الخارجة: اللون الأساسي · الداخلة: اللون المميّز الثاني. المحور الأفقي: تقدّم الانتقال.</string>
+    <string name="transition_out_finish">اكتمال اختفاء الطبقة الخارجة عند</string>
+    <string name="transition_in_start">بدء ظهور الطبقة الداخلة عند</string>
+    <string name="transition_no_preview">المعاينة الصوتية غير متاحة حتى دمج نموذج متوافق على الهاتف وتحضير الطبقات المفصولة. لا تؤثّر المسودات المحفوظة على الخلط أو الراديو أو الألبومات أو التشغيل العادي.</string>
+    <string name="transition_unsaved">تعديلات غير محفوظة. احفظ التعديلات قبل تبديل الزوج.</string>
+    <string name="transition_saved">حُفظت المسودة على هذا الجهاز. لا تُطبَّق على الصوت.</string>
+    <string name="transition_save_failed">تعذّر حفظ المسودة. لا تزال تعديلاتك هنا؛ حاول مجددًا.</string>
+    <string name="transition_reset">إعادة ضبط التصميم</string>
+    <string name="transition_saving">جارٍ الحفظ…</string>
+    <string name="transition_save_draft">حفظ المسودة</string>
+    <string name="transition_discard_title">تجاهل التعديلات غير المحفوظة؟</string>
+    <string name="transition_discard_body">سيُحتفظ بآخر تصميم محفوظ، وستُفقد التعديلات الحالية على هذه الشاشة.</string>
+    <string name="transition_discard">تجاهل</string>
+    <string name="transition_keep_editing">متابعة التعديل</string>
+    <string name="transition_seconds_value">%1$s: %2$s ث</string>
+    <string name="transition_percent_value">%1$s: %2$d٪</string>
+    <string name="transition_vocals">الغناء</string>
+    <string name="transition_drums">الطبول</string>
+    <string name="transition_bass">الجهير</string>
+    <string name="transition_other">بقية الآلات</string>
+</resources>

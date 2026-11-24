@@ -23,8 +23,20 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
+    - name: Run shared and Android unit tests
+      run: ./gradlew :shared:jvmTest :app:testDevDebugUnitTest
+
     - name: Build Dev Debug APK
       run: ./gradlew :app:assembleDevDebug
+
+    - name: Upload test reports
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-test-reports
+        path: |
+          app/build/reports/tests/
+          shared/build/reports/tests/
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4

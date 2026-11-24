@@ -42,8 +42,8 @@ jobs:
 
       - run: chmod +x gradlew
 
-      - name: Tests
-        run: ./gradlew testDevDebugUnitTest
+      - name: Shared Automix and Android tests
+        run: ./gradlew :shared:jvmTest :app:testDevDebugUnitTest
 
       - name: Build the dev APK
         run: ./gradlew assembleDevDebug
@@ -59,7 +59,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: android-test-reports
-          path: app/build/reports/tests/
+          path: |
+            app/build/reports/tests/
+            shared/build/reports/tests/
 
   backend:
     name: Backend · Go

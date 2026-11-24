@@ -17,4 +17,6 @@
     <exclude domain="sharedpref" path="bitchord_last_played.xml" />
     <exclude domain="sharedpref" path="bitchord_bounded_context.xml" />
     <exclude domain="sharedpref" path="bitchord_party_queue_stash.xml" />
+    <!-- Transition designs stay on this device, just like their prepared audio will. -->
+    <exclude domain="sharedpref" path="playlist_transition_drafts_v1.xml" />
 </full-backup-content>

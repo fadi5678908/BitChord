@@ -23,7 +23,6 @@ import com.music.bitchord.playback.loopmix.LoopMixPort
 import com.music.bitchord.playback.loopmix.LoopMixRenderer
 import com.music.bitchord.playback.loopmix.LoopMixSession
 import com.music.bitchord.playback.loopmix.LoopRegion
-import com.music.bitchord.playback.smart.CrossfadeMode
 import com.music.bitchord.playback.smart.LoopMix
 import com.music.bitchord.playback.smart.FILTER_ECHO_AT
 import com.music.bitchord.playback.smart.FilterTransitionVariant
@@ -33,7 +32,8 @@ import com.music.bitchord.playback.smart.TransitionPlan
 import com.music.bitchord.playback.smart.TransitionStyle
 import com.music.bitchord.playback.smart.TransitionTrackInfo
 import com.music.bitchord.playback.smart.echoTailSeconds
-import com.music.bitchord.playback.smart.planTransition
+import com.music.bitchord.playback.smart.forPlaybackStart
+import com.music.bitchord.playback.smart.AutomixSessionPlanner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -136,10 +136,8 @@ class CrossfadeController(
     private val onHandoff: (outgoing: ExoPlayer, incoming: ExoPlayer) -> Unit,
     /**
      * Stored Automix analysis for a media item, or an empty [TrackAnalysis]
-     * when there is none yet. This is the seam Phase 1's DSP analyzer plugs
-     * into: until analysis finishes, a track reads as "no evidence", which
-     * [planTransition] answers with the same fixed-length crossfade this
-     * class always ran before Automix existed.
+     * when there is none yet. Until analysis finishes, the session planner
+     * treats the pair as uncertain and uses a restrained natural-speed fade.
      */
     private val analysisFor: (MediaItem) -> TrackAnalysis = { TrackAnalysis() },
     /**
@@ -554,6 +552,7 @@ class CrossfadeController(
 
     /** Dedupes the per-tick plan log down to one line per distinct verdict. */
     private var lastPlanVerdict = ""
+    private val automixPlanner = AutomixSessionPlanner()
 
     // ---- Phase lock (Advanced Automix) --------------------------------------
 
@@ -787,6 +786,7 @@ class CrossfadeController(
     }
 
     fun release() {
+        automixPlanner.clear()
         tickerJob?.cancel()
         tickerJob = null
         loopBuildJob?.cancel()
@@ -1073,15 +1073,9 @@ class CrossfadeController(
         // by asking for it, and without that a paused track plans blind.
         requestAnalysisAround(player, duration)
 
-        // Only used before analysis lands, or when the evidence is too weak
-        // for more than a plain fade (see [TransitionTier.PLAIN_CROSSFADE]):
-        // once real analysis is available, [planTransition] sizes the overlap
-        // itself from tempo and structure and ignores this entirely. Honours
-        // the manual slider if the listener also set one, so the two settings
-        // don't fight; falls back to a fixed length when it's at "Off".
-        val fallbackSeconds = configuredFadeMs().takeIf { it > 0L }
-            ?.div(1000.0)
-            ?: DEFAULT_SMART_FALLBACK_SECONDS
+        // Automix owns its timing, including the fallback. The manual crossfade
+        // slider is hidden while it is on, so a stale slider value must not
+        // decide how a pair is mixed.
 
         // Resolved once and reused: [analysisFor] was being called five separate
         // times per tick below, and the answer cannot change mid-tick.
@@ -1091,16 +1085,12 @@ class CrossfadeController(
         // The DJ planner is Automix now; there is no separate mode switch.
         val advanced = true
 
-        val plan = planTransition(
-            analysis = currentAnalysis,
-            nextAnalysis = nextAnalysis,
-            currentTrack = currentItem.toTransitionInfo(duration),
-            nextTrack = nextItem.toTransitionInfo(nextDuration),
+        val plan = automixPlanner.plan(
+            outgoing = currentAnalysis,
+            incoming = nextAnalysis,
+            current = currentItem.toTransitionInfo(duration),
+            next = nextItem.toTransitionInfo(nextDuration),
             currentTime = player.currentPosition / 1000.0,
-            duration = duration / 1000.0,
-            fadeSeconds = fallbackSeconds,
-            mode = CrossfadeMode.SMART,
-            advanced = advanced,
         )
         // One line per distinct verdict rather than one per 250ms tick, so the
         // log says what the planner decided for this pair without burying it.
@@ -1617,6 +1607,13 @@ class CrossfadeController(
         // up. Give up and let the queue move on plainly rather than fading into
         // silence.
         if (expired && !ready) return bail()
+        if (!ready) {
+            // Never hollow out the song that is still playing while the next
+            // decoder is buffering. Only pre-position the silent incoming side.
+            tracks.outgoing(TransitionFilterProcessor.OPEN_HZ, TransitionFilterProcessor.OFF_HZ)
+            rideFilters(0f, null)
+            return
+        }
 
         // Both sinks write seconds ahead of the speaker. The standby fills its
         // whole buffer while it waits here, so its filter has to be at the
@@ -1637,7 +1634,20 @@ class CrossfadeController(
         // analyzed mix-out anchor when it ends before the file does.
         val atFadePoint = fadeEndMs <= 0L || fadeEndMs - out.currentPosition <= fadeMs
         if (!atFadePoint) return
-        if (ready) startFade()
+        if (smartFadeActive) {
+            val armed = planInFlight
+            val adjusted = armed?.forPlaybackStart(out.currentPosition / 1000.0)
+            if (adjusted?.blocked == true) return bail()
+            if (adjusted != null && adjusted !== armed) {
+                fadeMs = adjusted.fadeMs
+                incomingPlaybackRate = adjusted.incomingPlaybackRate
+                into.setPlaybackSpeed((AppSettings.playbackSpeed.value * incomingPlaybackRate).toFloat())
+                render = Render(vocalOverlap = adjusted.vocalOverlap, advanced = true)
+                filters.open()
+                planInFlight = adjusted
+            }
+        }
+        startFade()
     }
 
     /**
@@ -1678,8 +1688,8 @@ class CrossfadeController(
         // the old sheen for a mix flag with no blend beside it, and would flash
         // it for a frame otherwise.
         publishBlend(out, into, force = true)
-        AppSettings.smartMixInProgress.value = isRealMix()
-        if (isRealMix()) publishMixView(out, into)
+        AppSettings.smartMixInProgress.value = isVisibleMix()
+        if (isVisibleMix()) publishMixView(out, into)
         // The bar fills to the end through the first half of the blend, which
         // would run straight over the marker for the transition now under way.
         AppSettings.smartTransitionWindow.value = null
@@ -2081,6 +2091,7 @@ class CrossfadeController(
             inEnd = geometry.inEnd,
             beats = beats,
             beatMarks = marks,
+            beatMatched = render.style == TransitionStyle.DJ_BLEND,
             fadeOut = fadeOut,
             fadeIn = fadeIn,
             bassSwapAt = when {
@@ -3279,25 +3290,11 @@ class CrossfadeController(
     private fun bassCutoff(amount: Double): Float =
         glide(TransitionFilterProcessor.OFF_HZ.toDouble(), BASS_SWAP_HZ, amount).toFloat()
 
-    /**
-     * Whether the transition in flight is doing something a plain crossfade
-     * could not — which is what [AppSettings.smartMixInProgress] promises the
-     * listener when it lights the scrubber up.
-     *
-     * Any one of three things qualifies, because they are the three things
-     * analysis buys: a style that filters or swaps bass, an incoming track cued
-     * into its arrangement instead of its first frame, or a tempo stretch. The
-     * case this exists to exclude is the fallback — an unanalysed pair, cued at
-     * 0:00, fading equal-power — which is indistinguishable from what the app
-     * did before Automix existed and would be a lie to advertise.
+    /** Show real two-deck overlap, including a safe fallback, but never an album handoff.
+     * The view carries an explicit beatMatched flag so a fade is not advertised as beat sync.
      */
-    private fun isRealMix(): Boolean = smartFadeActive && (
-        render.style == TransitionStyle.DJ_BLEND ||
-            render.style == TransitionStyle.DJ_FILTER ||
-            incomingCueTimeMs > 0L ||
-            incomingPlaybackRate != 1.0 ||
-            outgoingPlaybackRate != 1.0
-        )
+    private fun isVisibleMix(): Boolean = smartFadeActive && planInFlight != null &&
+        render.style != TransitionStyle.GAPLESS
 
     /** Equal-power pair: [riseGain]² + [fallGain]² = 1, so the blend never dips. */
     private fun riseGain(progress: Float): Float =
@@ -3666,14 +3663,6 @@ class CrossfadeController(
         const val MIX_VIEW_FADER_POINTS = 64
 
         const val TAG = "BitChordCrossfade"
-
-        /**
-         * Used only before a pair has been analysed, or when the evidence is
-         * too weak for more than a plain fade — see [considerSmartTransition].
-         * Once real analysis lands, the overlap is sized from tempo and
-         * structure instead and this is never read.
-         */
-        const val DEFAULT_SMART_FALLBACK_SECONDS = 6.0
 
         /** Ramp used when a fade is interrupted. */
         const val BAIL_MS = 120L

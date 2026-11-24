@@ -1,6 +1,8 @@
 package com.music.bitchord.ui.screens
 
 import com.music.bitchord.ui.components.trackArtSize
+import com.music.bitchord.ui.components.PlaylistTransitionEditor
+import androidx.compose.material3.OutlinedButton
 import android.os.Build
 import com.music.bitchord.R
 
@@ -353,6 +355,13 @@ fun DetailScreen(
     reorder: (@Composable (ArtworkPalette) -> Unit)? = null,
 ) {
     val rawSongs = (page.songs as? UiState.Success)?.data.orEmpty()
+    // Always use the playlist's original running order, never the temporary search/sort order.
+    var showTransitionEditor by rememberSaveable(page.browseId) { mutableStateOf(false) }
+    val canEditTransitions = page.type == BrowseType.PLAYLIST && folder == null && rawSongs.size >= 2
+    if (showTransitionEditor && canEditTransitions) {
+        PlaylistTransitionEditor(page.browseId, rawSongs, onDismiss = { showTransitionEditor = false })
+    }
+
     // A folder keeps its own sort — the one its top bar menu sets — rather
     // than the per-page one a release takes.
     val folderSort = folder?.sort
@@ -582,6 +591,17 @@ fun DetailScreen(
                         onToggleLibrary = onToggleLibrary,
                         onDownloadAll = folder?.onDownload?.let { download -> { download(songs) } },
                     )
+                }
+            }
+
+            if (canEditTransitions) {
+                item(key = "transition-studio") {
+                    OutlinedButton(
+                        onClick = { showTransitionEditor = true },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp),
+                    ) {
+                        Text(stringResource(R.string.transition_studio_entry))
+                    }
                 }
             }
 

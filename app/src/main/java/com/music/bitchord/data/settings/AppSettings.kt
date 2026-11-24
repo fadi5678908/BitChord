@@ -770,15 +770,9 @@ object AppSettings {
     val audioSessionId = MutableStateFlow(0)
 
     /**
-     * True only while a Automix transition that is actually *mixing* is
-     * audible — one that beat-matched, cued the incoming track into its
-     * arrangement, or rode a filter.
-     *
-     * Deliberately not "a crossfade is running". The fallback case, where
-     * neither track was analysed in time and the incoming one starts from 0:00
-     * under a plain equal-power fade, is exactly what this must stay dark for:
-     * the whole point is that seeing it means the analysis landed and did
-     * something a plain crossfade could not.
+     * True during an audible two-track Automix overlap, including its safe fallback fade.
+     * Not set while only arming, or for an album's gapless handoff. The mix view's
+     * explicit beatMatched flag distinguishes real beat sync from an ordinary fade.
      */
     val smartMixInProgress = MutableStateFlow(false)
 

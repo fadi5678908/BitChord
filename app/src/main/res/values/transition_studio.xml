@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="transition_studio">Transition studio</string>
+    <string name="transition_studio_entry">Customize transitions · Draft editor</string>
+    <string name="transition_close">Close</string>
+    <string name="transition_draft_badge">LOCAL DRAFT · NOT APPLIED TO PLAYBACK</string>
+    <string name="transition_model_notice">Design a handoff for this playlist only. On-device stem separation is not available in this build. These controls save a design; they do not separate or change the audio. No audio is uploaded.</string>
+    <string name="transition_previous">Previous</string>
+    <string name="transition_next">Next</string>
+    <string name="transition_pair_number">%1$d / %2$d</string>
+    <string name="transition_outgoing">OUTGOING</string>
+    <string name="transition_incoming">INCOMING</string>
+    <string name="transition_timing">Transition timing</string>
+    <string name="transition_overlap">Overlap duration</string>
+    <string name="transition_trim">Skip from outgoing ending</string>
+    <string name="transition_cue">Incoming start position</string>
+    <string name="transition_layers">Layer handoff design</string>
+    <string name="transition_design_curves">Design envelopes — not audio waveforms</string>
+    <string name="transition_curve_legend">Outgoing: primary color · Incoming: secondary accent. Horizontal axis: transition progress.</string>
+    <string name="transition_out_finish">Finish outgoing fade at</string>
+    <string name="transition_in_start">Begin incoming fade at</string>
+    <string name="transition_no_preview">Audio preview is unavailable until a compatible on-device model and prepared stems are integrated. Saved drafts do not affect shuffle, radio, albums, or normal playback.</string>
+    <string name="transition_unsaved">Unsaved changes. Save changes before switching pairs.</string>
+    <string name="transition_saved">Draft saved on this device. Not applied to audio.</string>
+    <string name="transition_save_failed">Could not save the draft. Your edits are still here; try again.</string>
+    <string name="transition_reset">Reset design</string>
+    <string name="transition_saving">Saving…</string>
+    <string name="transition_save_draft">Save draft</string>
+    <string name="transition_discard_title">Discard unsaved changes?</string>
+    <string name="transition_discard_body">The last saved design will be kept. The changes on this screen will be lost.</string>
+    <string name="transition_discard">Discard</string>
+    <string name="transition_keep_editing">Keep editing</string>
+    <string name="transition_seconds_value">%1$s: %2$s s</string>
+    <string name="transition_percent_value">%1$s: %2$d%%</string>
+    <string name="transition_vocals">Vocals</string>
+    <string name="transition_drums">Drums</string>
+    <string name="transition_bass">Bass</string>
+    <string name="transition_other">Instruments</string>
+</resources>

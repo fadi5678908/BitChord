@@ -14,6 +14,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -180,7 +182,7 @@ internal fun MixViewPopup(
                 modifier = Modifier
                     .widthIn(max = PopupMaxWidth)
                     .fillMaxWidth()
-                    .padding(horizontal = 26.dp)
+                    .padding(horizontal = 26.dp, vertical = 16.dp)
                     .clip(PopupShape)
                     .then(
                         if (reduceDynamicBlur) {
@@ -200,6 +202,7 @@ internal fun MixViewPopup(
                         interactionSource = remember { MutableInteractionSource() },
                         onClick = {},
                     )
+                    .verticalScroll(rememberScrollState())
                     .padding(vertical = 14.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -213,6 +216,7 @@ internal fun MixViewPopup(
 @Composable
 internal fun MixViewContent(view: MixTransitionView, progress: State<Float>, live: Boolean = true) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        AutomixHandoffHero(view, progress, live)
         DeckHeader(view.outgoing, Modifier.padding(horizontal = 14.dp))
         Spacer(Modifier.height(12.dp))
         MixDecks(view, progress, live)
