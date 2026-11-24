@@ -112,8 +112,9 @@ measurement coverage, bounded deterministic search, local tempo/octave matching,
 fallback refinement, and cache invalidation/seek behavior. `MixPresentationTest`
 covers the fader-driven animation math and explicit renderer mode. Existing
 planner, phrase-bar, spoken/live, and loop-mix suites cover the legacy paths.
-The Check workflow now runs shared JVM tests as well as Android unit tests
-before producing its dev APK; it has not been dispatched from this sandbox.
+The Check workflow now includes shared JVM tests alongside Android unit tests.
+The manually dispatched Android APK workflow also runs these suites before
+building; its successful verification run is recorded below.
 
 With the project's normal JDK 17 / Android SDK / Gradle setup:
 
@@ -223,3 +224,50 @@ weights, sample rate, input/output shapes and stem order; validate STFT/iSTFT
 reconstruction, normalization and overlap-add; measure peak memory, latency,
 heat and audible artifacts on Android. Do not equate successful Kotlin logic
 tests with successful ML inference or good sounding transitions.
+
+
+## Successful Android CI build — 2026-11-24
+
+Source commit: `07c09032a95dd5db51f592ca7499987400fcd563` on
+`arena/e92e9d7c-bitchord` (not merged to main).
+
+Run: https://github.com/fadi5678908/BitChord/actions/runs/45507085162
+
+GitHub Actions reports **success** for both:
+
+- `./gradlew :shared:jvmTest :app:testDevDebugUnitTest`
+- `./gradlew :app:assembleDevDebug`
+
+This supersedes the earlier *full Android build unverified* limitation: the
+Android/Compose sources now passed actual CI compilation and APK assembly.
+The isolated 98-method Kotlin suite was also rerun locally and passed.
+No Android device, emulator, listening, screenshot or UI interaction test was
+run. Full CI logs and XML reports could not be downloaded into the sandbox
+because the Actions artifact/log storage hosts are unreachable here; no total
+CI test count is asserted. Step success was verified using the Actions API.
+
+Artifact: `bitchord-dev-debug` (508,015,040 bytes compressed, multiple ABI APKs)
+https://github.com/fadi5678908/BitChord/actions/runs/45507085162/artifacts/14973722432
+
+The dev flavor uses `com.dev.bitchord` / **BitChord Dev**, separate from the
+normal `com.music.bitchord` install. For most current Android phones, choose the
+APK containing `arm64-v8a`; the universal APK is the architecture-independent
+fallback. Do not uninstall an existing dev install to resolve signing errors
+without first preserving its data. The artifact download may require signing
+in to GitHub and will expire according to the repository artifact retention.
+
+### Phone acceptance checklist (pending)
+
+1. Install BitChord Dev and open a playlist with at least two loaded songs.
+2. Open **Customize transitions · Draft editor**. Verify Arabic/RTL, scrolling,
+   artwork and pair navigation. Album and artist pages must not show the entry.
+3. Change overlap/cue and the vocal handoff, save, close and reopen. The values
+   should persist. Verify a different playlist does not inherit this design.
+4. Edit without saving, attempt to close, and check discard confirmation.
+   Rotate while editing and verify the unsaved design is retained.
+5. Enable Automix, then play the end of a pair of tracks. Inspect the Mixing
+   handoff animation and expanded view; compare against Automix disabled.
+6. Pause/resume, use reduced animation, seek near the end, and test a slow
+   incoming decoder. Listen for dropouts, unnatural speed changes or early cuts.
+7. Remember that editor drafts intentionally do not affect audio yet: four-stem
+   separation, custom preview and prepared-stem playback remain unimplemented.
