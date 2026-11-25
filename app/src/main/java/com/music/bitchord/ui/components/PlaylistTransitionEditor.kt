@@ -1,6 +1,5 @@
 package com.music.bitchord.ui.components
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -13,7 +12,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -29,6 +27,12 @@ import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.durationMillis
 import com.music.bitchord.data.settings.PlaylistTransitionDraftStore
 import com.music.bitchord.playback.smart.*
+import com.music.bitchord.playback.rememberMediaController
+import com.music.bitchord.playback.StudioTransport
+import com.music.bitchord.playback.studioPlay
+import com.music.bitchord.playback.studioStop
+import androidx.media3.session.MediaController
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -36,11 +40,13 @@ import kotlin.math.roundToInt
 
 /** Explicit natural-speed playlist timing; no decorative controls for unimplemented stem separation. */
 @Composable
-fun PlaylistTransitionEditor(playlistId: String, songs: List<Song>, onDismiss: () -> Unit, onPlayPair: (Int) -> Unit = {}) {
+fun PlaylistTransitionEditor(playlistId: String, songs: List<Song>, onDismiss: () -> Unit) {
     if (playlistId.isBlank() || songs.size < 2) return
     val context = LocalContext.current
     val store = remember(context) { PlaylistTransitionDraftStore.get(context) }
     val scope = rememberCoroutineScope()
+    val controller = rememberMediaController()
+    val transport by StudioTransport.state.collectAsState()
     var selected by rememberSaveable(playlistId, songs) { mutableIntStateOf(0) }
     val index = selected.coerceIn(0, songs.size - 2)
     val outgoing = songs[index]
@@ -54,6 +60,13 @@ fun PlaylistTransitionEditor(playlistId: String, songs: List<Song>, onDismiss: (
         !song.setVideoId.isNullOrBlank() || songs.count { it.videoId == song.videoId } == 1
     }
     androidx.compose.runtime.key(key) {
+        val owner = remember { UUID.randomUUID().toString() }
+        val preview = transport?.takeIf { it.owner == owner }
+        var previewFailed by remember { mutableStateOf(false) }
+        var previewStarting by remember { mutableStateOf(false) }
+        DisposableEffect(controller, owner) {
+            onDispose { controller?.studioStop(owner) }
+        }
         var draft by rememberSaveable(key, stateSaver = TimingSaver) { mutableStateOf(PlaylistTransitionDraft(enabled = true).sanitized()) }
         var baseline by rememberSaveable(key, stateSaver = TimingSaver) { mutableStateOf(draft) }
         var loaded by rememberSaveable(key) { mutableStateOf(false) }
@@ -63,7 +76,8 @@ fun PlaylistTransitionEditor(playlistId: String, songs: List<Song>, onDismiss: (
         var confirmClose by remember { mutableStateOf(false) }
         val dirty = draft != baseline
         val valid = !draft.enabled || draft.windows(outLength.toDouble(), inLength.toDouble()) != null
-        val editable = loaded && !saving
+        val previewRunning = preview?.running == true || previewStarting
+        val editable = loaded && !saving && !previewRunning
         LaunchedEffect(key) {
             if (!loaded) {
                 val stored = withContext(Dispatchers.IO) { store.read(key) }
@@ -101,9 +115,11 @@ fun PlaylistTransitionEditor(playlistId: String, songs: List<Song>, onDismiss: (
                         val outStart = draft.outgoingStartSeconds ?: (outMax - draft.outgoingTrimSeconds).coerceAtLeast(0f)
                         val inStart = draft.incomingStartSeconds ?: draft.incomingCueSeconds
                         TrackTiming(outgoing, stringResource(R.string.transition_exit_point), outStart, outLength, draft.overlapSeconds,
-                            Color(0xFF1ED760), editable && outMax > 0f, outMax) { edit(draft.copy(outgoingStartSeconds = it)) }
+                            Color(0xFFFFA348), editable && outMax > 0f, outMax, controller, true, draft.volumeHandoff,
+                            preview?.takeIf { it.running }?.elapsed, { edit(draft.copy(volumeHandoff = draft.volumeHandoff.copy(outgoingUntil = it))) }) { edit(draft.copy(outgoingStartSeconds = it)) }
                         TrackTiming(incoming, stringResource(R.string.transition_entry_point), inStart, inLength, draft.overlapSeconds,
-                            MaterialTheme.colorScheme.tertiary, editable && inMax > 0f, inMax) { edit(draft.copy(incomingStartSeconds = it)) }
+                            Color(0xFF58A7FF), editable && inMax > 0f, inMax, controller, false, draft.volumeHandoff,
+                            preview?.takeIf { it.running }?.elapsed, { edit(draft.copy(volumeHandoff = draft.volumeHandoff.copy(incomingFrom = it))) }) { edit(draft.copy(incomingStartSeconds = it)) }
                         Column {
                             Text(stringResource(R.string.transition_seconds_value, stringResource(R.string.transition_overlap), draft.overlapSeconds))
                             Slider(value = draft.overlapSeconds, onValueChange = {
@@ -132,8 +148,22 @@ fun PlaylistTransitionEditor(playlistId: String, songs: List<Song>, onDismiss: (
                     }, enabled = editable && valid && unambiguous, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
                         Text(stringResource(if (saving) R.string.transition_saving else R.string.transition_apply))
                     }
-                    TextButton(onClick = { onDismiss(); onPlayPair(index) }, enabled = editable && saved && !dirty && draft.enabled,
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) { Text(stringResource(R.string.transition_play_pair)) }
+                    if (previewFailed || preview?.error == true) Text(stringResource(R.string.transition_preview_failed), color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.transition_preview_notice), style = MaterialTheme.typography.bodySmall)
+                    FilledTonalButton(onClick = {
+                        if (previewRunning) controller?.studioStop(owner)
+                        else scope.launch {
+                            previewStarting = true
+                            previewFailed = false
+                            try { previewFailed = controller?.studioPlay(owner, outgoing, incoming, draft) != true }
+                            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                            catch (_: Exception) { previewFailed = true }
+                            finally { previewStarting = false }
+                        }
+                    }, enabled = controller != null && loaded && valid && draft.enabled && !saving && !previewStarting,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                        Text(stringResource(if (previewRunning) R.string.transition_stop_preview else R.string.transition_preview))
+                    }
                 }
             }
         }
@@ -146,7 +176,8 @@ fun PlaylistTransitionEditor(playlistId: String, songs: List<Song>, onDismiss: (
 }
 
 @Composable
-private fun TrackTiming(song: Song, label: String, start: Float, length: Float, overlap: Float, accent: Color, enabled: Boolean, maximum: Float, onChange: (Float) -> Unit) {
+private fun TrackTiming(song: Song, label: String, start: Float, length: Float, overlap: Float, accent: Color, enabled: Boolean, maximum: Float,
+    controller: MediaController?, outgoing: Boolean, handoff: StemHandoff, elapsed: Float?, onEnvelope: (Float) -> Unit, onChange: (Float) -> Unit) {
     Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -162,16 +193,8 @@ private fun TrackTiming(song: Song, label: String, start: Float, length: Float, 
                 Text(formatTime(start))
                 Text(formatTime(length), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            // A source timeline with a highlighted overlap, deliberately not a fabricated waveform.
-            val trackColor = MaterialTheme.colorScheme.outlineVariant
-            Canvas(Modifier.fillMaxWidth().height(14.dp)) {
-                drawLine(trackColor, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), 4.dp.toPx())
-                if (length > 0) {
-                    val x = size.width * (start / length).coerceIn(0f, 1f)
-                    val end = size.width * ((start + overlap) / length).coerceIn(0f, 1f)
-                    drawLine(accent, Offset(x, size.height / 2), Offset(end, size.height / 2), 8.dp.toPx())
-                }
-            }
+            StudioWaveformTrack(controller, song, start, length, overlap, outgoing, handoff, accent, enabled,
+                elapsed, onChange, onEnvelope)
             val safe = start.coerceIn(0f, maximum.coerceAtLeast(0f))
             Slider(value = safe, onValueChange = { onChange((it * 10).roundToInt() / 10f) },
                 valueRange = 0f..maximum.coerceAtLeast(0.1f), enabled = enabled,
@@ -191,8 +214,9 @@ private fun formatTime(value: Float): String {
 
 private val TimingSaver = listSaver<PlaylistTransitionDraft, Float>(save = {
     listOf(it.overlapSeconds, it.outgoingTrimSeconds, it.incomingCueSeconds,
-        it.outgoingStartSeconds ?: -1f, it.incomingStartSeconds ?: -1f, if (it.enabled) 1f else 0f)
+        it.outgoingStartSeconds ?: -1f, it.incomingStartSeconds ?: -1f, if (it.enabled) 1f else 0f, it.volumeHandoff.outgoingUntil, it.volumeHandoff.incomingFrom)
 }, restore = {
-    if (it.size != 6) null else PlaylistTransitionDraft(it[0], it[1], it[2],
-        outgoingStartSeconds = it[3].takeIf { v -> v >= 0 }, incomingStartSeconds = it[4].takeIf { v -> v >= 0 }, enabled = it[5] == 1f).sanitized()
+    if (it.size != 6 && it.size != 8) null else PlaylistTransitionDraft(it[0], it[1], it[2],
+        outgoingStartSeconds = it[3].takeIf { v -> v >= 0 }, incomingStartSeconds = it[4].takeIf { v -> v >= 0 }, enabled = it[5] == 1f,
+        volumeHandoff = StemHandoff(it.getOrElse(6) { 1f }, it.getOrElse(7) { 0f })).sanitized()
 })

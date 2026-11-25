@@ -10,6 +10,8 @@ import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.music.bitchord.data.listentogether.ListenTogether
+import com.music.bitchord.data.model.durationMillis
+import com.music.bitchord.playback.smart.transitionQueuedDurationMs
 import com.music.bitchord.data.settings.AppSettings
 import com.music.bitchord.data.settings.MixBlend
 import com.music.bitchord.data.settings.MixDeck
@@ -1375,9 +1377,13 @@ class CrossfadeController(
      * anything worth failing a tick over.
      */
     private fun queuedDurationMs(item: MediaItem): Long {
-        val uri = item.localConfiguration?.uri ?: return 0L
-        val seconds = runCatching { uri.getQueryParameter("d") }.getOrNull()?.toLongOrNull() ?: return 0L
-        return if (seconds > 0) seconds * 1000L else 0L
+        val metadata = item.toSong().durationMillis()
+        val uri = item.localConfiguration?.uri
+        val seconds = runCatching { uri?.getQueryParameter("d") }.getOrNull()?.toLongOrNull()
+        // Local/downloaded URIs have no d= query. The queue still carries the
+        // original runtime in metadata; losing it made every custom plan null
+        // until Media3 prepared the next item (too late to arm the second deck).
+        return transitionQueuedDurationMs(metadata, seconds)
     }
 
     /** BitChord doesn't carry album metadata on [MediaMetadata] yet, so [TransitionTrackInfo.album] stays blank. */
@@ -3370,6 +3376,7 @@ class CrossfadeController(
      * [headroomFor] keeps two faders at full from summing past full scale.
      */
     private fun mixRise(progress: Float): Float {
+        planInFlight?.volumeHandoff?.let { return it.gains(progress).second }
         if (!render.advanced) return riseGain(progress)
         val styled = when (render.style) {
             TransitionStyle.DJ_BLEND ->
@@ -3391,6 +3398,7 @@ class CrossfadeController(
      * low-pass is already taking it away.
      */
     private fun mixFall(progress: Float): Float {
+        planInFlight?.volumeHandoff?.let { return it.gains(progress).first }
         if (!render.advanced) return fallGain(progress)
         // The fader carries the repeats too, so an echo out leaves it up and
         // fades the dry signal in the chain instead — see [rideEchoOut].

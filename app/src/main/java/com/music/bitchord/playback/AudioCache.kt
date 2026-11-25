@@ -2209,6 +2209,10 @@ object AudioCache {
      * touched at all, which should never happen once [isFullyCached] is true.
      * Callers must [MediaDataSource.close] it.
      */
+    /** Explicit editor read: the exact playback URI, with the normal resolver and cache. */
+    fun studioDataSource(uri: Uri, upstream: DataSource.Factory): MediaDataSource =
+        CacheMediaDataSource(playbackFactory(upstream).createDataSource(), uri)
+
     fun mediaDataSource(uri: Uri): MediaDataSource? {
         if (!isFullyCached(uri)) return null
         return CacheMediaDataSource(cacheFactory(NoUpstream).createDataSource(), uri)
@@ -2297,8 +2301,11 @@ object AudioCache {
         override fun getSize(): Long {
             closeUpstream()
             return try {
-                dataSource.open(DataSpec(uri))
+                // Mark the successful open: otherwise closeUpstream was a no-op,
+                // leaking a source and leaving its next open in an invalid state.
+                dataSource.open(DataSpec(uri)).also { isOpen = true }
             } catch (error: IOException) {
+                runCatching { dataSource.close() }
                 -1L
             } finally {
                 closeUpstream()

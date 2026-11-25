@@ -181,6 +181,8 @@ data class TransitionPlan(
     val transitionEnd: Double = 0.0,
     val fadeSeconds: Double = 0.0,
     val transitionStyle: TransitionStyle = TransitionStyle.EQUAL_POWER,
+    /** Explicit playlist master-volume automation, never synthesized by the automatic planner. */
+    val volumeHandoff: StemHandoff? = null,
     /** Where in the incoming track playback should be cued to when the transition opens. */
     val incomingCueTime: Double = 0.0,
     /** Where the incoming track's arrangement lands, on its own timeline. */

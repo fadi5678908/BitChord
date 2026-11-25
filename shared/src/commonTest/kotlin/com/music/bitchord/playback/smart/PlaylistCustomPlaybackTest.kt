@@ -7,6 +7,38 @@ import kotlin.test.*
 class PlaylistCustomPlaybackTest {
     private val custom = PlaylistTransitionDraft(overlapSeconds = 8f, outgoingStartSeconds = 70f, incomingStartSeconds = 42f, enabled = true)
 
+    @Test fun localAndDownloadedTracksDoNotNeedAStreamingDurationQuery() {
+        val duration = transitionQueuedDurationMs(180_000, null)
+        assertEquals(180_000L, duration)
+        assertNotNull(custom.playbackPlan(200.0, duration / 1000.0, 0.0))
+        assertEquals(180_000L, transitionQueuedDurationMs(180_000, 120))
+        assertEquals(120_000L, transitionQueuedDurationMs(0, 120))
+        assertEquals(0L, transitionQueuedDurationMs(0, null))
+        assertEquals(0L, transitionQueuedDurationMs(-1, Long.MAX_VALUE))
+        assertEquals(0L, transitionQueuedDurationMs(0, -1))
+    }
+
+    @Test fun masterEnvelopeIsCarriedIntoTheActualPlaybackPlan() {
+        val envelope = StemHandoff(0.4f, 0.6f)
+        val p = assertNotNull(custom.copy(volumeHandoff = envelope).playbackPlan(200.0, 180.0, 0.0))
+        assertEquals(envelope, p.volumeHandoff)
+        val middle = assertNotNull(p.volumeHandoff).gains(0.5f)
+        assertEquals(0f, middle.first, 0.0001f)
+        assertEquals(0f, middle.second, 0.0001f)
+        assertEquals(envelope, p.forPlaybackStart(72.0).volumeHandoff)
+        assertNull(TransitionPlan().volumeHandoff)
+    }
+
+    @Test fun masterEnvelopeSanitizesUnsafeHandlesAndKeepsLegacyEqualPower() {
+        val d = custom.copy(volumeHandoff = StemHandoff(Float.NaN, Float.POSITIVE_INFINITY)).sanitized()
+        assertEquals(StemHandoff(), d.volumeHandoff)
+        for (i in 0..100) {
+            val (out, inn) = d.volumeHandoff.gains(i / 100f)
+            assertEquals(1f, out * out + inn * inn, 0.0001f)
+        }
+        assertEquals(StemHandoff(0.1f, 0.9f), custom.copy(volumeHandoff = StemHandoff(-1f, 2f)).sanitized().volumeHandoff)
+    }
+
     @Test fun explicitExitAndEntryBecomeAPlayableNaturalSpeedPlan() {
         val p = assertNotNull(custom.playbackPlan(200.0, 180.0, 20.0))
         assertEquals(70.0, p.transitionStart)

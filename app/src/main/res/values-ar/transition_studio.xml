@@ -40,10 +40,18 @@
     <string name="transition_scope">لهذا الزوج داخل هذه القائمة فقط</string>
     <string name="transition_exit_point">بدء خروج الأغنية عند</string>
     <string name="transition_entry_point">دخول الأغنية التالية عند</string>
-    <string name="transition_timing_help">المقطع الملوّن هو التداخل. اضغط تطبيق لسماع التوقيت بالسرعة الأصلية حتى مع إيقاف Automix. يُطبَّق على الزوج المحفوظ بترتيب القائمة فقط، وليس الخلط أو الراديو. لا يفصل هذا الغناء أو الآلات.</string>
+    <string name="transition_timing_help">اسحب الموجة لتغيير منطقة التداخل، واسحب النقطة البيضاء أو استخدم شريطها لتعديل مستوى الصوت المسموع. يطبّق الحفظ التوقيت والتلاشي لهذا الزوج في قائمة التشغيل بالسرعة الطبيعية، حتى عند إيقاف Automix. لا يشمل التشغيل العشوائي أو الراديو. الموجات تمثل ترددات صوتية وليست فصلًا للأصوات والآلات.</string>
     <string name="transition_invalid_timing">يلزم توفر مدة الأغنيتين وعدم التباس الإدخالات المكررة. اجعل المقطعين الملوّنين داخل مدتي الأغنيتين.</string>
     <string name="transition_applied">تم الحفظ. سيُستخدم التوقيت المفعّل لهذا الزوج داخل القائمة.</string>
     <string name="transition_apply">تطبيق وحفظ</string>
     <string name="transition_play_pair">تشغيل من الأغنية الأولى</string>
     <string name="transition_second_unit">ث</string>
+    <string name="transition_wave_unavailable">تعذّر فك هذه المنطقة الصوتية. تحقّق من اتصال المصدر أو نزّل الأغنية ثم أعد المحاولة. لن نعرض موجة وهمية.</string>
+    <string name="transition_retry">إعادة المحاولة</string>
+    <string name="transition_master_out">مستوى الصوت الكامل: نهاية التلاشي (اسحب النقطة البيضاء)</string>
+    <string name="transition_master_in">مستوى الصوت الكامل: بداية الدخول (اسحب النقطة البيضاء)</string>
+    <string name="transition_preview">▶ معاينة الانتقال</string>
+    <string name="transition_stop_preview">■ إيقاف المعاينة</string>
+    <string name="transition_preview_notice">تستبدل المعاينة قائمة التشغيل الحالية بهاتين الأغنيتين، وتبدأ قبل التداخل بثانيتين وتتوقف بعده بثانيتين. يمكنك سماع التعديلات قبل حفظها؛ زر التطبيق وحده يجعلها دائمة.</string>
+    <string name="transition_preview_failed">تعذّر إكمال الانتقال. تحقّق من مصدر الصوت والمدد وإعدادات الإخراج. المعاينة غير متاحة مع البث الخارجي أو الاستماع الجماعي أو الإخراج المطابق للبت أو مؤقت النوم بنهاية الأغنية.</string>
 </resources>

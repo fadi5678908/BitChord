@@ -40,10 +40,18 @@
     <string name="transition_scope">This pair, in this playlist only</string>
     <string name="transition_exit_point">Start outgoing handoff at</string>
     <string name="transition_entry_point">Start incoming song at</string>
-    <string name="transition_timing_help">The highlighted section is the overlap. Apply to hear these timings at normal speed, even with Automix off. Only the saved pair in normal playlist order is affected; shuffle and radio are excluded. This does not separate vocals or instruments.</string>
+    <string name="transition_timing_help">Drag a waveform to move its selected region. Drag the white handle, or use its slider, to change the audible master-volume envelope. Apply uses these timings and envelopes for this playlist pair at normal speed, even with Automix off. Shuffle and radio are excluded. Colored bands are audio frequencies, not separated vocals or instruments.</string>
     <string name="transition_invalid_timing">Full track durations and unique playlist entries are required. Keep both highlighted sections inside their tracks.</string>
     <string name="transition_applied">Saved. Enabled timings will be used for this playlist pair.</string>
     <string name="transition_apply">Apply &amp; save</string>
     <string name="transition_play_pair">Play from the outgoing song</string>
     <string name="transition_second_unit">s</string>
+    <string name="transition_wave_unavailable">Could not decode this audio region. Check the source connection or download the track, then retry. No placeholder waveform is shown.</string>
+    <string name="transition_retry">Retry</string>
+    <string name="transition_master_out">Master volume: finish fade-out (drag the white handle)</string>
+    <string name="transition_master_in">Master volume: begin fade-in (drag the white handle)</string>
+    <string name="transition_preview">▶ Preview transition</string>
+    <string name="transition_stop_preview">■ Stop preview</string>
+    <string name="transition_preview_notice">Preview replaces the current queue with these two tracks, starts 2 seconds before the overlap and stops 2 seconds after it. Unsaved edits can be auditioned; only Apply makes them permanent.</string>
+    <string name="transition_preview_failed">The transition could not complete. Check audio access, full durations and output settings. Preview is unavailable with Cast, Listen Together, bit-perfect output or the after-track sleep timer.</string>
 </resources>

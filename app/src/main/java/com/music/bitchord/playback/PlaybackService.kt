@@ -135,6 +135,7 @@ import com.music.bitchord.data.innertube.PlayerClient
 import com.music.bitchord.data.innertube.StreamResolver
 import com.music.bitchord.data.model.LikeStatus
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.model.durationMillis
 import com.music.bitchord.data.model.isUnresolvedSpotify
 import com.music.bitchord.data.scrobbling.LastFM
 import com.music.bitchord.data.scrobbling.ListenBrainzManager
@@ -1747,6 +1748,7 @@ class PlaybackService : MediaLibraryService() {
             DefaultDataSource.Factory(this, resolvingFactory),
         )
         AudioCache.setUpstream(defaultDataSourceFactory)
+        studioUpstream = defaultDataSourceFactory
         // DsdExtractorsFactory: the stock extractors plus DSF/DFF, which Media3
         // cannot open at all. A DSD file leaves the extractor as float PCM.
         mediaSourceFactory = DefaultMediaSourceFactory(
@@ -1919,6 +1921,76 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    private var studioUpstream: DataSource.Factory? = null
+    private val studioDecodeLock = Mutex()
+    private data class StudioPreview(val owner: String, val source: String, val outId: String, val inId: String,
+        val draft: com.music.bitchord.playback.smart.PlaylistTransitionDraft)
+    private var studioPreview: StudioPreview? = null
+    private var studioPreviewJob: Job? = null
+
+    private fun stopStudio(owner: String? = null) {
+        val preview = studioPreview ?: return
+        if (owner != null && preview.owner != owner) return
+        studioPreviewJob?.cancel()
+        studioPreviewJob = null
+        crossfade?.onSkipRequested()
+        player?.pause()
+        studioPreview = null
+        StudioTransport.state.value = null
+    }
+
+    /** Auditions the very same two-deck engine as normal playlist playback, not a separate demo mixer. */
+    private fun playStudio(args: Bundle): Boolean {
+        if (CastController.state.value.casting || castPlayback.active || ListenTogether.state.value.inParty ||
+            BitPerfectOutput.status.value.active || SleepTimer.afterTrack.value) return false
+        val out = args.getBundle("out")?.let(::songFromBundle) ?: return false
+        val inn = args.getBundle("in")?.let(::songFromBundle) ?: return false
+        val owner = args.getString("owner")?.takeIf { it.isNotBlank() } ?: return false
+        val draft = studioDraft(args)
+        val window = draft.windows(out.durationMillis() / 1000.0, inn.durationMillis() / 1000.0) ?: return false
+        stopStudio()
+        crossfade?.onSkipRequested()
+        clearBoundedContext()
+        QueueShuffle.setEnabled(false)
+        val source = "transition-preview:$owner"
+        val items = listOf(out, inn).map { it.copy(playbackSourceId = source,
+            playbackSourceType = PlaybackSourceType.BROWSE, queueTier = QueueTier.CONTEXT,
+            radioName = null).toMediaItem() }
+        val exo = player ?: return false
+        studioPreview = StudioPreview(owner, source, out.videoId, inn.videoId, draft)
+        StudioTransport.state.value = StudioTransport.State(owner)
+        exo.repeatMode = Player.REPEAT_MODE_OFF
+        exo.shuffleModeEnabled = false
+        exo.setMediaItems(items, 0, ((window.outStart - 2).coerceAtLeast(0.0) * 1000).toLong())
+        exo.prepare()
+        exo.play()
+        studioPreviewJob = scope.launch {
+            val deadline = SystemClock.elapsedRealtime() + 90_000L
+            var mixed = false
+            while (isActive && studioPreview?.owner == owner) {
+                val current = player ?: break
+                mixed = mixed || AppSettings.smartMixInProgress.value
+                val item = current.currentMediaItem
+                val incoming = current.currentMediaItemIndex == 1
+                val elapsed = current.currentPosition / 1000f - (if (incoming) window.inStart else window.outStart).toFloat()
+                // Both decks start at the overlap's zero; handoff changes the source clock, not its origin.
+                StudioTransport.state.value = StudioTransport.State(owner, elapsed)
+                val failed = current.playerError != null || SystemClock.elapsedRealtime() > deadline ||
+                    item?.toSong()?.playbackSourceId != source
+                val ended = incoming && elapsed >= draft.overlapSeconds + 2f || current.playbackState == Player.STATE_ENDED
+                if (failed || ended) {
+                    crossfade?.onSkipRequested()
+                    player?.pause()
+                    studioPreview = null
+                    StudioTransport.state.value = StudioTransport.State(owner, elapsed, running = false, error = failed || !mixed)
+                    break
+                }
+                delay(40)
+            }
+        }
+        return true
+    }
+
     private val playlistTransitions by lazy { PlaylistTransitionDraftStore.get(this) }
 
     private fun createCrossfadeController() = CrossfadeController(
@@ -1930,6 +2002,10 @@ class PlaybackService : MediaLibraryService() {
             customTransitionFor = custom@{ outItem, inItem ->
                 val out = outItem.toSong()
                 val inn = inItem.toSong()
+                studioPreview?.let { preview ->
+                    if (out.playbackSourceId == preview.source && inn.playbackSourceId == preview.source &&
+                        out.videoId == preview.outId && inn.videoId == preview.inId) return@custom preview.draft
+                }
                 val source = out.playbackSourceId?.takeIf { it.isNotBlank() } ?: return@custom null
                 if (QueueShuffle.enabled.value || player?.shuffleModeEnabled == true || out.playbackSourceType != PlaybackSourceType.BROWSE ||
                     inn.playbackSourceType != PlaybackSourceType.BROWSE || inn.playbackSourceId != source ||
@@ -7630,6 +7706,9 @@ class PlaybackService : MediaLibraryService() {
 
 
     override fun onDestroy() {
+        stopStudio()
+        StudioTransport.state.value = null
+        studioUpstream = null
         WearBridge.attachStreams(null)
         WearBridge.releaseSpeaker()
         // Let go of the receiver's player but leave its session alone: a
@@ -8435,6 +8514,9 @@ class PlaybackService : MediaLibraryService() {
         ): MediaSession.ConnectionResult {
             val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
                 .buildUpon()
+                .add(SessionCommand(ACTION_STUDIO_WAVE, Bundle.EMPTY))
+                .add(SessionCommand(ACTION_STUDIO_PLAY, Bundle.EMPTY))
+                .add(SessionCommand(ACTION_STUDIO_STOP, Bundle.EMPTY))
                 .add(favoriteCommand)
                 .add(boundedContextCommand)
                 .add(clearBoundedContextCommand)
@@ -8473,6 +8555,33 @@ class PlaybackService : MediaLibraryService() {
             args: Bundle,
         ): ListenableFuture<SessionResult> {
             when (customCommand.customAction) {
+                ACTION_STUDIO_WAVE -> return scope.future(Dispatchers.IO) {
+                    studioDecodeLock.withLock {
+                        val song = args.getBundle("song")?.let(::songFromBundle)
+                            ?: return@withLock SessionResult(SessionError.ERROR_BAD_VALUE)
+                        val from = args.getFloat("from").toDouble()
+                        val to = args.getFloat("to").toDouble()
+                        if (!from.isFinite() || !to.isFinite() || from < 0 || to <= from || to - from > 30.01)
+                            return@withLock SessionResult(SessionError.ERROR_BAD_VALUE)
+                        val upstream = studioUpstream ?: return@withLock SessionResult(SessionError.ERROR_INVALID_STATE)
+                        val job = coroutineContext[Job]
+                        val bands = runCatching {
+                            DirectSourceGate.ungated {
+                                val uri = song.toMediaItem().localConfiguration?.uri ?: return@ungated null
+                                AudioCache.studioDataSource(uri, upstream).use { source ->
+                                    com.music.bitchord.playback.smart.MixWaveform.build(source, from, to, 480,
+                                        abort = { job?.isActive == false })
+                                }
+                            }
+                        }.getOrNull() ?: return@withLock SessionResult(SessionError.ERROR_IO)
+                        SessionResult(SessionResult.RESULT_SUCCESS, Bundle().apply {
+                            putFloatArray("low", bands.low); putFloatArray("mid", bands.mid); putFloatArray("high", bands.high)
+                        })
+                    }
+                }
+                ACTION_STUDIO_PLAY -> return Futures.immediateFuture(SessionResult(
+                    if (playStudio(args)) SessionResult.RESULT_SUCCESS else SessionError.ERROR_INVALID_STATE))
+                ACTION_STUDIO_STOP -> stopStudio(args.getString("owner") ?: "")
                 ACTION_START_BOUNDED_CONTEXT -> startBoundedContext(args)
                 ACTION_CLEAR_BOUNDED_CONTEXT -> clearBoundedContext()
                 ACTION_TOGGLE_AUTOPLAY -> toggleAutoplayFromNotification()

@@ -35,10 +35,13 @@ data class PlaylistTransitionDraft(
     val outgoingStartSeconds: Float? = null,
     val incomingStartSeconds: Float? = null,
     val enabled: Boolean = false,
+    /** Master-volume envelope; independent of the reserved, unseparated stem designs. */
+    val volumeHandoff: StemHandoff = StemHandoff(),
 ) {
     fun handoff(stem: TransitionStem): StemHandoff = (stems[stem] ?: defaultHandoff(stem)).sanitized()
 
     fun sanitized() = copy(
+        volumeHandoff = volumeHandoff.sanitized(),
         overlapSeconds = overlapSeconds.safe(6f).coerceIn(2f, 12f),
         outgoingTrimSeconds = outgoingTrimSeconds.safe(0f).coerceIn(0f, 6f),
         incomingCueSeconds = incomingCueSeconds.safe(0f).coerceIn(0f, 30f),
@@ -118,6 +121,7 @@ fun PlaylistTransitionDraft.playbackPlan(outgoingDuration: Double, incomingDurat
         incomingCueTime = window.inStart, incomingHandoffTime = window.inEnd,
         handoffDuration = window.outEnd - window.outStart,
         transitionStyle = TransitionStyle.EQUAL_POWER,
+        volumeHandoff = sanitized().volumeHandoff,
         policyReasons = listOf("playlist-custom-timing"), reason = "playlist-custom-transition",
     )
     val now = time.orZero().coerceAtLeast(0.0)
@@ -134,4 +138,11 @@ fun playlistTransitionEntry(trackId: String, entryId: String?): String =
 fun TransitionPlan.incomingFadeLimitMs(remainingMs: Long?): Long {
     val remaining = remainingMs?.coerceAtLeast(0L) ?: return Long.MAX_VALUE
     return if ("playlist-custom-timing" in policyReasons) remaining else remaining / 3
+}
+
+/** Queue metadata also covers local/downloaded URIs, which have no streaming d= parameter. */
+fun transitionQueuedDurationMs(metadataMs: Long, uriSeconds: Long?): Long = when {
+    metadataMs > 0L -> metadataMs
+    uriSeconds != null && uriSeconds in 1..(Long.MAX_VALUE / 1000) -> uriSeconds * 1000L
+    else -> 0L
 }

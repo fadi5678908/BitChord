@@ -45,6 +45,7 @@ class PlaylistTransitionDraftStore private constructor(context: Context) {
                 outgoingTrimSeconds = root.getDouble("trim").toFloat(),
                 incomingCueSeconds = root.getDouble("cue").toFloat(),
                 enabled = root.optBoolean("enabled", false),
+                volumeHandoff = StemHandoff(root.optDouble("volumeUntil", 1.0).toFloat(), root.optDouble("volumeFrom", 0.0).toFloat()),
                 outgoingStartSeconds = if (root.has("outStart")) root.getDouble("outStart").toFloat() else null,
                 incomingStartSeconds = if (root.has("inStart")) root.getDouble("inStart").toFloat() else null,
                 stems = TransitionStem.entries.associateWith { stem ->
@@ -65,6 +66,7 @@ class PlaylistTransitionDraftStore private constructor(context: Context) {
             layers.put(stem.name, JSONObject().put("until", handoff.outgoingUntil).put("from", handoff.incomingFrom))
         }
         val encoded = JSONObject().put("enabled", d.enabled)
+            .put("volumeUntil", d.volumeHandoff.outgoingUntil).put("volumeFrom", d.volumeHandoff.incomingFrom)
             .apply {
                 d.outgoingStartSeconds?.let { put("outStart", it) }
                 d.incomingStartSeconds?.let { put("inStart", it) }
