@@ -453,3 +453,31 @@ still **pending**, not implied by CI success.
 The direct universal test APK is published separately, extracted without a
 rebuild, under release `automix-test-7a8e139`:
 https://github.com/fadi5678908/BitChord/releases/download/automix-test-7a8e139/BitChord-Dev-Automix-universal.apk
+
+## Install failure investigation
+
+Published APK verification run
+[45621025011](https://github.com/fadi5678908/BitChord/actions/runs/45621025011)
+passed ZIP integrity and Android `apksigner verify`; manifest is
+`com.dev.bitchord`, versionCode 36, minSdk 26, targetSdk 36.
+This validates the published bytes, not the user's downloaded copy or phone.
+
+The two delivered APKs have **different signing certificates**:
+- `automix-test-845619c`: SHA-256 `098e83655b0397b5442faddd194cc5c2cf23f9b4d97a5b9e536dc57a285e8607`
+- `automix-test-7a8e139`: SHA-256 `157c59c64f8a7943f280cd200796192ba1af66993418f1bc8e2fb347ec3fe602`
+
+A normal in-place update from the former to the latter is therefore not
+supported. Do not tell users to uninstall without backing up app data. The
+user's exact installer message remains needed to confirm their failure mode;
+no device install or repair has been observed. These CI builds currently use
+runner-generated debug signing, not a stable persistent development key.
+A stable signing solution is still needed for future updates; it cannot recover
+the previous private key or retroactively make this APK an authorized update.
+
+The registered Android workflow now accepts `verify_release` and optional
+`compare_release`, delegating to the reusable verification workflow. Verification
+downloads the actual published APKs read-only and does not rebuild/replace them.
+An initial comparison run failed because recent build-tools use SDK-scoped
+signer labels instead of `Signer #1`; the corrected parser passed in the run
+linked above. Creating a new workflow file on a non-default branch does not
+register it for direct dispatch, so the existing Android workflow is the entry.
