@@ -145,7 +145,8 @@ class VocalTracker(
      * cover a transition overlap plus padding. Shorter input is zero-padded; longer is refused
      * rather than chunked, because a transition never needs more than one window.
      */
-    fun track(left: FloatArray, right: FloatArray, rate: Double): FloatArray? = synchronized(lock) {
+    fun track(left: FloatArray, right: FloatArray, rate: Double): FloatArray? {
+        return synchronized(lock) {
         if (!VocalSpectrogram.available) return null
         val resampledLeft = MelSpectrogram.resample(left, rate, VocalSpectrogram.sampleRate) ?: return null
         val resampledRight = MelSpectrogram.resample(right, rate, VocalSpectrogram.sampleRate) ?: return null
@@ -194,6 +195,7 @@ class VocalTracker(
                 }
             }
         }.onFailure { AnalysisLog.warn("Vocal inference failed", it) }.getOrNull()
+        }
     }
 
     /**

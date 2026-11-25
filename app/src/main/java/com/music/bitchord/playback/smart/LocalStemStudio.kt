@@ -42,7 +42,7 @@ internal class LocalStemStudio(private val context: Context, private val analyze
                 val count = ((to - from) * pcm.sampleRate).roundToInt()
                 require(first >= 0 && first + count <= pcm.left.size + 1 && first + count <= pcm.right.size + 1) { "Decoder did not cover selected region" }
                 check(!abort())
-                return analyzer.separateLocal(pcm.left.copyOfRange(first, first + count), pcm.right.copyOfRange(first, first + count), pcm.sampleRate, abort)
+                return analyzer.separateLocal(pcm.left.copyOfRange(first, minOf(first + count, pcm.left.size)).copyOf(count), pcm.right.copyOfRange(first, minOf(first + count, pcm.right.size)).copyOf(count), pcm.sampleRate, abort)
                     ?: error("Separation model failed")
             }
             progress("outgoing")

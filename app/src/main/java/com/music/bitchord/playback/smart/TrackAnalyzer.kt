@@ -1098,6 +1098,28 @@ class TrackAnalyzer(private val context: Context, private val cache: AudioCache,
         if (structural.decodedShort) return WholeTrack(null, decodedShort = true)
         val features = structural.features ?: return WholeTrack(empty(trackId, effectiveDuration))
 
+        // A local file has already supplied its complete structural evidence.
+        // Publish it while the expensive regional models refine it, rather than
+        // leaving playback with an empty placeholder for the entire model pass.
+        // Provisional, not persisted and never represented as a measured neural grid.
+        if (LocalAudioSource.isLocal(uri)) {
+            provisional.add(trackId)
+            results[trackId] = TrackAnalysis(
+                status = TrackAnalysis.STATUS_READY, trackId = trackId, duration = effectiveDuration,
+                contentEndTime = features.contentEndTime.takeIf { it > 0 } ?: effectiveDuration,
+                bpm = features.bpm, beatInterval = features.beatInterval, beatConfidence = features.beatConfidence,
+                firstBeat = features.firstBeat, downbeats = features.downbeats, phraseBoundaries = features.phraseBoundaries,
+                key = features.key, keyConfidence = features.keyConfidence,
+                audibleStartTime = features.audibleStartTime, pickupTime = features.pickupTime,
+                introEndTime = features.introEndTime, outroStartTime = features.outroStartTime,
+                mixInTime = features.mixInTime, mixOutTime = features.mixOutTime,
+                mixInCandidates = features.mixInCandidates, mixOutCandidates = features.mixOutCandidates,
+                energyCurve = features.energyCurve, lowEnergyCurve = features.lowEnergyCurve,
+                vocalProbability = features.vocalProbability,
+                vocalActivityMask = features.vocalActivityMask.map(::heuristicVocalOnModelScale),
+            )
+        }
+
         // Pass 2 (Phases 2 and 3, models): the Beat This! grid and the open-unmix vocal mask, over
         // the opening and the ending only. A transition only ever reads the tail of the outgoing
         // track and the head of the incoming one, and a track is both of those at different
@@ -1585,8 +1607,10 @@ class TrackAnalyzer(private val context: Context, private val cache: AudioCache,
         badRenditions.clear()
         triedRenditions.clear()
         discarded.clear()
-        tracker.release()
-        vocals.release()
+        CoroutineScope(Dispatchers.IO).launch {
+            tracker.release()
+            vocals.release()
+        }
     }
 
     private companion object {
