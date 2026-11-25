@@ -68,7 +68,7 @@ fun PlaylistTransitionEditor(playlistId: String, songs: List<Song>, onDismiss: (
         DisposableEffect(controller, owner) {
             onDispose { controller?.studioStop(owner) }
         }
-        var draft by rememberSaveable(key, stateSaver = TimingSaver) { mutableStateOf(PlaylistTransitionDraft(enabled = true).sanitized()) }
+        var draft by rememberSaveable(key, stateSaver = TimingSaver) { mutableStateOf(PlaylistTransitionDraft(enabled = true, mode = PlaylistTransitionMode.AUTOMATIC).sanitized()) }
         var baseline by rememberSaveable(key, stateSaver = TimingSaver) { mutableStateOf(draft) }
         var loaded by rememberSaveable(key) { mutableStateOf(false) }
         var saving by remember { mutableStateOf(false) }
@@ -76,13 +76,14 @@ fun PlaylistTransitionEditor(playlistId: String, songs: List<Song>, onDismiss: (
         var failed by remember { mutableStateOf(false) }
         var confirmClose by remember { mutableStateOf(false) }
         val dirty = draft != baseline
-        val valid = !draft.enabled || draft.windows(outLength.toDouble(), inLength.toDouble()) != null
+        val timing = draft.resolvedTiming(outLength.toDouble(), inLength.toDouble())
+        val valid = !draft.enabled || timing.windows(outLength.toDouble(), inLength.toDouble()) != null
         val previewRunning = preview?.running == true || previewStarting
         val editable = loaded && !saving && !previewRunning
         LaunchedEffect(key) {
             if (!loaded) {
                 val stored = withContext(Dispatchers.IO) { store.read(key) }
-                draft = stored ?: PlaylistTransitionDraft(enabled = true).sanitized()
+                draft = stored ?: PlaylistTransitionDraft(enabled = true, mode = PlaylistTransitionMode.AUTOMATIC).sanitized()
                 baseline = draft
                 saved = stored?.enabled == true
                 loaded = true
@@ -111,6 +112,35 @@ fun PlaylistTransitionEditor(playlistId: String, songs: List<Song>, onDismiss: (
                             Switch(checked = draft.enabled, onCheckedChange = { edit(draft.copy(enabled = it)) }, enabled = editable,
                                 modifier = Modifier.semantics { contentDescription = context.getString(R.string.transition_enable) })
                         }
+                        Text(stringResource(R.string.transition_type), style = MaterialTheme.typography.titleSmall)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            PlaylistTransitionMode.entries.forEach { mode ->
+                                FilterChip(selected = draft.mode == mode, onClick = {
+                                    edit(draft.copy(mode = mode))
+                                    if (mode == PlaylistTransitionMode.CROSSFADE) stemMode = null
+                                },
+                                    enabled = editable, label = { Text(stringResource(when (mode) {
+                                        PlaylistTransitionMode.AUTOMATIC -> R.string.transition_automatic
+                                        PlaylistTransitionMode.CUSTOM -> R.string.transition_custom
+                                        PlaylistTransitionMode.CROSSFADE -> R.string.transition_crossfade
+                                    })) }, modifier = Modifier.weight(1f))
+                            }
+                        }
+                        Text(stringResource(when (draft.mode) {
+                            PlaylistTransitionMode.AUTOMATIC -> R.string.transition_auto_help
+                            PlaylistTransitionMode.CUSTOM -> R.string.transition_custom_help
+                            PlaylistTransitionMode.CROSSFADE -> R.string.transition_crossfade_help
+                        }), style = MaterialTheme.typography.bodySmall)
+                        if (draft.mode != PlaylistTransitionMode.CROSSFADE) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(stringResource(R.string.transition_separate_saved), modifier = Modifier.weight(1f))
+                                Switch(checked = draft.separateVocals, onCheckedChange = {
+                                    edit(draft.copy(separateVocals = it))
+                                    stemMode = if (it) LocalStemAudition.VOCAL_OVER_RHYTHM else null
+                                }, enabled = editable)
+                            }
+                            Text(stringResource(R.string.transition_separate_fallback), style = MaterialTheme.typography.bodySmall)
+                        }
                         Text(stringResource(R.string.transition_audition_mode), style = MaterialTheme.typography.titleSmall)
                         val modes = listOf<LocalStemAudition?>(null, LocalStemAudition.VOCAL_OVER_RHYTHM,
                             LocalStemAudition.VOCALS, LocalStemAudition.INSTRUMENTAL)
@@ -128,17 +158,18 @@ fun PlaylistTransitionEditor(playlistId: String, songs: List<Song>, onDismiss: (
                             }
                         }
                         if (stemMode != null) Text(stringResource(R.string.transition_stem_notice), style = MaterialTheme.typography.bodySmall)
-                        val outMax = (outLength - draft.overlapSeconds).coerceAtLeast(0f)
-                        val inMax = (inLength - draft.overlapSeconds).coerceAtLeast(0f)
-                        val outStart = draft.outgoingStartSeconds ?: (outMax - draft.outgoingTrimSeconds).coerceAtLeast(0f)
-                        val inStart = draft.incomingStartSeconds ?: draft.incomingCueSeconds
-                        TrackTiming(outgoing, stringResource(R.string.transition_exit_point), outStart, outLength, draft.overlapSeconds,
-                            Color(0xFFFFA348), editable && outMax > 0f, outMax, controller, true, draft.volumeHandoff,
+                        val customEditing = editable && draft.mode == PlaylistTransitionMode.CUSTOM
+                        val outMax = (outLength - timing.overlapSeconds).coerceAtLeast(0f)
+                        val inMax = (inLength - timing.overlapSeconds).coerceAtLeast(0f)
+                        val outStart = timing.outgoingStartSeconds ?: (outMax - timing.outgoingTrimSeconds).coerceAtLeast(0f)
+                        val inStart = timing.incomingStartSeconds ?: timing.incomingCueSeconds
+                        TrackTiming(outgoing, stringResource(R.string.transition_exit_point), outStart, outLength, timing.overlapSeconds,
+                            Color(0xFFFFA348), customEditing && outMax > 0f, outMax, controller, true, timing.volumeHandoff,
                             preview?.takeIf { it.running && it.stage == null }?.elapsed, { edit(draft.copy(volumeHandoff = draft.volumeHandoff.copy(outgoingUntil = it))) }) { edit(draft.copy(outgoingStartSeconds = it)) }
-                        TrackTiming(incoming, stringResource(R.string.transition_entry_point), inStart, inLength, draft.overlapSeconds,
-                            Color(0xFF58A7FF), editable && inMax > 0f, inMax, controller, false, draft.volumeHandoff,
+                        TrackTiming(incoming, stringResource(R.string.transition_entry_point), inStart, inLength, timing.overlapSeconds,
+                            Color(0xFF58A7FF), customEditing && inMax > 0f, inMax, controller, false, timing.volumeHandoff,
                             preview?.takeIf { it.running && it.stage == null }?.elapsed, { edit(draft.copy(volumeHandoff = draft.volumeHandoff.copy(incomingFrom = it))) }) { edit(draft.copy(incomingStartSeconds = it)) }
-                        Column {
+                        if (draft.mode != PlaylistTransitionMode.AUTOMATIC) Column {
                             Text(stringResource(R.string.transition_seconds_value, stringResource(R.string.transition_overlap), draft.overlapSeconds))
                             Slider(value = draft.overlapSeconds, onValueChange = {
                                 val overlap = (it * 10).roundToInt() / 10f
@@ -154,7 +185,7 @@ fun PlaylistTransitionEditor(playlistId: String, songs: List<Song>, onDismiss: (
                         if (dirty) Text(stringResource(R.string.transition_unsaved), color = MaterialTheme.colorScheme.primary)
                         if (saved) Text(stringResource(R.string.transition_applied), color = MaterialTheme.colorScheme.primary)
                         if (failed) Text(stringResource(R.string.transition_save_failed), color = MaterialTheme.colorScheme.error)
-                        TextButton(onClick = { edit(PlaylistTransitionDraft(enabled = true)) }, enabled = editable) { Text(stringResource(R.string.transition_reset)) }
+                        TextButton(onClick = { edit(PlaylistTransitionDraft(enabled = true, mode = PlaylistTransitionMode.AUTOMATIC)) }, enabled = editable) { Text(stringResource(R.string.transition_reset)) }
                     }
                     Button(onClick = {
                         saving = true
@@ -181,7 +212,8 @@ fun PlaylistTransitionEditor(playlistId: String, songs: List<Song>, onDismiss: (
                         else scope.launch {
                             previewStarting = true
                             previewFailed = false
-                            try { previewFailed = controller?.studioPlay(owner, outgoing, incoming, draft, stemMode) != true }
+                            try { previewFailed = controller?.studioPlay(owner, outgoing, incoming, draft,
+                                stemMode ?: if (draft.separateVocals) LocalStemAudition.VOCAL_OVER_RHYTHM else null) != true }
                             catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
                             catch (_: Exception) { previewFailed = true }
                             finally { previewStarting = false }
@@ -252,9 +284,12 @@ private fun formatTime(value: Float): String {
 
 private val TimingSaver = listSaver<PlaylistTransitionDraft, Float>(save = {
     listOf(it.overlapSeconds, it.outgoingTrimSeconds, it.incomingCueSeconds,
-        it.outgoingStartSeconds ?: -1f, it.incomingStartSeconds ?: -1f, if (it.enabled) 1f else 0f, it.volumeHandoff.outgoingUntil, it.volumeHandoff.incomingFrom)
+        it.outgoingStartSeconds ?: -1f, it.incomingStartSeconds ?: -1f, if (it.enabled) 1f else 0f, it.volumeHandoff.outgoingUntil, it.volumeHandoff.incomingFrom,
+        it.mode.ordinal.toFloat(), if (it.separateVocals) 1f else 0f)
 }, restore = {
-    if (it.size != 6 && it.size != 8) null else PlaylistTransitionDraft(it[0], it[1], it[2],
+    if (it.size !in listOf(6, 8, 10)) null else PlaylistTransitionDraft(it[0], it[1], it[2],
         outgoingStartSeconds = it[3].takeIf { v -> v >= 0 }, incomingStartSeconds = it[4].takeIf { v -> v >= 0 }, enabled = it[5] == 1f,
-        volumeHandoff = StemHandoff(it.getOrElse(6) { 1f }, it.getOrElse(7) { 0f })).sanitized()
+        volumeHandoff = StemHandoff(it.getOrElse(6) { 1f }, it.getOrElse(7) { 0f }),
+        mode = PlaylistTransitionMode.entries.getOrElse(it.getOrElse(8) { 1f }.toInt()) { PlaylistTransitionMode.CUSTOM },
+        separateVocals = it.getOrElse(9) { 0f } == 1f).sanitized()
 })

@@ -408,6 +408,9 @@ class PrecisionAudioSink(
                 silenceUntilHandover(inArm, loopBlockUs, decodedFrames)
             }
 
+            // Media time, not wall-clock time: remains aligned across resampling and pause.
+            dspChain.transition.localStems.process(audioBlock,
+                if (loopBlockUs == C.TIME_UNSET) -1 else loopBlockUs - loop.streamOffsetUs, configuredSampleRate)
             // Process normalized Float32 samples through custom DSP chain
             dspChain.process(audioBlock)
 

@@ -74,6 +74,9 @@ import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.guava.future
+import com.music.bitchord.playback.smart.resolvedTiming
+import com.music.bitchord.playback.smart.playlistTransitionKeyFor
+import com.music.bitchord.playback.smart.playlistTransitionProfile
 import com.music.bitchord.playback.audio.DspChain
 import com.music.bitchord.playback.cast.CastController
 import com.music.bitchord.playback.cast.CastPlayback
@@ -1961,7 +1964,8 @@ class PlaybackService : MediaLibraryService() {
         val inn = args.getBundle("in")?.let(::songFromBundle) ?: return false
         val owner = args.getString("owner")?.takeIf { it.isNotBlank() } ?: return false
         if (out.isVideo || inn.isVideo || out.isVideoOrigin || inn.isVideoOrigin) return false
-        val draft = studioDraft(args)
+        val draft = studioDraft(args).resolvedTiming(out.durationMillis() / 1000.0, inn.durationMillis() / 1000.0,
+            trackAnalyzer.analysisFor(out.videoId), trackAnalyzer.analysisFor(inn.videoId))
         val window = draft.windows(out.durationMillis() / 1000.0, inn.durationMillis() / 1000.0) ?: return false
         stopStudio()
         crossfade?.onSkipRequested()
@@ -2036,7 +2040,9 @@ class PlaybackService : MediaLibraryService() {
         try {
             val (file, lead) = withContext(Dispatchers.IO) {
                 studioDecodeLock.withLock {
-                    localStemStudio.render(out, inn, studioDraft(args), mode, abort = { !job.isActive }) { stage ->
+                    localStemStudio.render(out, inn, studioDraft(args).resolvedTiming(
+                        out.durationMillis() / 1000.0, inn.durationMillis() / 1000.0,
+                        trackAnalyzer.analysisFor(out.videoId), trackAnalyzer.analysisFor(inn.videoId)), mode, abort = { !job.isActive }) { stage ->
                         if (job.isActive) StudioTransport.state.value = StudioTransport.State(owner, stage = stage)
                     }
                 }
@@ -2087,6 +2093,73 @@ class PlaybackService : MediaLibraryService() {
 
     private val playlistTransitions by lazy { PlaylistTransitionDraftStore.get(this) }
 
+    private var playlistStemJob: Job? = null
+    private var playlistStemKey: List<Any>? = null
+
+    private fun clearPlaylistStems() {
+        playlistStemKey = null
+        playlistStemJob?.cancel()
+        playlistStemJob = null
+        transitionFilterA.localStems.clear()
+        transitionFilterB.localStems.clear()
+    }
+
+    /** One bounded pair ahead. Failure/late preparation never delays the audio decks. */
+    private fun preparePlaylistStems(out: MediaItem, inn: MediaItem,
+        draft: com.music.bitchord.playback.smart.PlaylistTransitionDraft,
+        plan: com.music.bitchord.playback.smart.TransitionPlan) {
+        if (!draft.separateVocals || plan.blocked || SleepTimer.afterTrack.value ||
+            CastController.state.value.casting || ListenTogether.state.value.inParty ||
+            BitPerfectOutput.status.value.active) {
+            clearPlaylistStems()
+            return
+        }
+        val outUri = out.localConfiguration?.uri ?: return
+        val inUri = inn.localConfiguration?.uri ?: return
+        val key = listOf(out.toSong().playbackSourceId ?: "", out.toSong().setVideoId ?: out.mediaId,
+            inn.toSong().setVideoId ?: inn.mediaId, outUri.toString(), inUri.toString(),
+            plan.transitionStart, plan.transitionEnd, plan.incomingCueTime)
+        if (playlistStemKey == key) return
+        clearPlaylistStems()
+        playlistStemKey = key
+        if (!com.music.bitchord.playback.smart.LocalAudioSource.isLocal(outUri) ||
+            !com.music.bitchord.playback.smart.LocalAudioSource.isLocal(inUri)) {
+            Log.i("BitChordLocalStems", "Playlist fallback: local/downloaded sources required")
+            return
+        }
+        val exo = player ?: return
+        // A sink may already have queued its future PCM. Never swap half an overlap.
+        if (exo.currentPosition / 1000.0 >= plan.transitionStart - 2.0) return
+        val outPort = activeFilter.localStems
+        val inPort = spareFilter.localStems
+        val timing = draft.copy(mode = com.music.bitchord.playback.smart.PlaylistTransitionMode.CUSTOM,
+            outgoingStartSeconds = plan.transitionStart.toFloat(),
+            incomingStartSeconds = plan.incomingCueTime.toFloat(), overlapSeconds = plan.fadeSeconds.toFloat())
+        playlistStemJob = scope.launch {
+            try {
+                val preparationJob = kotlinx.coroutines.currentCoroutineContext()[Job]!!
+                val prepared = withContext(Dispatchers.IO) {
+                    studioDecodeLock.withLock {
+                        // Excludes overlapping audition work and opportunistic analysis.
+                        stemPreparationBusy = true
+                        try { localStemStudio.prepare(out.toSong(), inn.toSong(), timing,
+                            abort = { !preparationJob.isActive }) }
+                        finally { stemPreparationBusy = false }
+                    }
+                }
+                if (!isActive || playlistStemKey != key || player !== exo ||
+                    exo.currentMediaItem?.mediaId != out.mediaId ||
+                    exo.currentPosition / 1000.0 >= plan.transitionStart - 2.0) return@launch
+                outPort.arm(com.music.bitchord.playback.audio.LocalStemPort.Window(out.mediaId,
+                    plan.transitionStart - prepared.lead, plan.transitionStart, plan.fadeSeconds, true, prepared.out))
+                inPort.arm(com.music.bitchord.playback.audio.LocalStemPort.Window(inn.mediaId,
+                    plan.incomingCueTime, plan.incomingCueTime, plan.fadeSeconds, false, prepared.inn))
+                Log.i("BitChordLocalStems", "Playlist vocal/instrument windows ready")
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { Log.w("BitChordLocalStems", "Playlist fallback: separation unavailable", error) }
+        }
+    }
+
     private fun createCrossfadeController() = CrossfadeController(
             scope,
             active = { requireNotNull(player) },
@@ -2100,13 +2173,11 @@ class PlaybackService : MediaLibraryService() {
                     if (out.playbackSourceId == preview.source && inn.playbackSourceId == preview.source &&
                         out.videoId == preview.outId && inn.videoId == preview.inId) return@custom preview.draft
                 }
-                val source = out.playbackSourceId?.takeIf { it.isNotBlank() } ?: return@custom null
-                if (QueueShuffle.enabled.value || player?.shuffleModeEnabled == true || out.playbackSourceType != PlaybackSourceType.BROWSE ||
-                    inn.playbackSourceType != PlaybackSourceType.BROWSE || inn.playbackSourceId != source ||
-                    out.queueTier != QueueTier.CONTEXT || inn.queueTier != QueueTier.CONTEXT ||
-                    out.radioName != null || inn.radioName != null) return@custom null
-                val key = PlaylistTransitionKey(source, playlistTransitionEntry(out.videoId, out.setVideoId), playlistTransitionEntry(inn.videoId, inn.setVideoId))
-                val profile = playlistTransitions.active(key) ?: return@custom null
+                val key = playlistTransitionKeyFor(out, inn,
+                    QueueShuffle.enabled.value || player?.shuffleModeEnabled == true) ?: return@custom null
+                if (!playlistTransitions.loaded) return@custom null
+                val profile = playlistTransitionProfile(playlistTransitions.snapshot(key),
+                    AppSettings.smartFadeEnabled.value, AppSettings.crossfadeSeconds.value) ?: return@custom null
                 // Without stable playlist entry IDs, duplicate tracks are ambiguous. Fail closed.
                 val queue = player ?: return@custom null
                 for (song in listOf(out, inn).filter { it.setVideoId.isNullOrBlank() }) {
@@ -2114,6 +2185,8 @@ class PlaybackService : MediaLibraryService() {
                 }
                 profile
             },
+            onPlaylistPlanInvalidated = ::clearPlaylistStems,
+            onPlaylistPlan = ::preparePlaylistStems,
             requestAnalysis = { item, durationMs ->
                 item.localConfiguration?.uri?.let { uri ->
                     trackAnalyzer.request(item.mediaId, uri, durationMs / 1000.0)
@@ -3815,6 +3888,8 @@ class PlaybackService : MediaLibraryService() {
         alreadyAudible: Boolean = false,
     ) {
         val exoPlayer = player ?: return
+        if (!alreadyAudible) clearPlaylistStems()
+        else activeFilter.localStems.retainOwner(mediaItem?.mediaId)
         syncBoundedContextCursor(exoPlayer, mediaItem)
         if (boundedContextWindow != null && !ListenTogether.state.value.inParty) {
             saveBoundedContextSnapshot(exoPlayer)
@@ -7803,6 +7878,7 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onDestroy() {
         stopStudio()
+        clearPlaylistStems()
         StudioTransport.state.value = null
         studioUpstream = null
         WearBridge.attachStreams(null)

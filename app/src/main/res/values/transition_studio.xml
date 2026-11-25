@@ -40,7 +40,7 @@
     <string name="transition_scope">This pair, in this playlist only</string>
     <string name="transition_exit_point">Start outgoing handoff at</string>
     <string name="transition_entry_point">Start incoming song at</string>
-    <string name="transition_timing_help">Drag a waveform to move its selected region. Drag the white handle, or use its slider, to change the audible master-volume envelope. Apply uses these timings and envelopes for this playlist pair at normal speed, even with Automix off. Shuffle and radio are excluded. Colored bands are audio frequencies, not separated vocals or instruments.</string>
+    <string name="transition_timing_help">Custom mode lets you drag each waveform to move its overlap and adjust the white master-volume handles. Apply saves the selected mode and vocal-separation switch for this playlist pair, even with global Automix off. Shuffle and radio are excluded. Colored waveform bands show frequencies, not separated stems.</string>
     <string name="transition_invalid_timing">Full track durations and unique playlist entries are required. Keep both highlighted sections inside their tracks.</string>
     <string name="transition_applied">Saved. Enabled timings will be used for this playlist pair.</string>
     <string name="transition_apply">Apply &amp; save</string>
@@ -56,13 +56,22 @@
     <string name="transition_preview_failed">The transition could not complete. Check audio access, full durations and output settings. Preview is unavailable with Cast, Listen Together, bit-perfect output or the after-track sleep timer.</string>
     <string name="transition_fine">Fine adjustments</string>
     <string name="transition_hide_fine">Hide fine adjustments</string>
-    <string name="transition_audition_mode">Audition sound</string>
+    <string name="transition_audition_mode">Audition monitor · not saved</string>
     <string name="transition_mode_normal">Original mix</string>
     <string name="transition_mode_vocal_rhythm">Vocal over rhythm</string>
     <string name="transition_mode_vocals">Vocals only</string>
     <string name="transition_mode_music">Instruments only</string>
-    <string name="transition_stem_notice">Local playlist audition: both tracks must be files on this phone (downloads work too). The bundled model reconstructs vocals and accompaniment on-device; some bleed is expected. This is not separate drums/bass. Separation modes are preview-only; Apply saves timing and master fades, not separated playback.</string>
+    <string name="transition_stem_notice">Both tracks must be files on this phone. The model reconstructs vocals and accompaniment; some bleed is expected. Drums and bass are not separate stems. The saved-playback switch above is independent of these audition choices.</string>
     <string name="transition_separate_out">Separating the outgoing local clip… You can cancel.</string>
     <string name="transition_separate_in">Separating the incoming local clip… You can cancel.</string>
     <string name="transition_render_stems">Rendering the vocal / rhythm audition on this phone…</string>
+    <string name="transition_type">Transition type</string>
+    <string name="transition_automatic">Automatic</string>
+    <string name="transition_custom">Custom</string>
+    <string name="transition_crossfade">Crossfade</string>
+    <string name="transition_auto_help">A reliable natural-speed handoff. Uses available local timing evidence; otherwise blends the final 6 seconds. No looping, pitch change, or model readiness requirement.</string>
+    <string name="transition_custom_help">Choose the exact exit, entry and volume envelopes for this playlist pair.</string>
+    <string name="transition_crossfade_help">Simple equal-power overlap from the end of this track into the start of the next. No stem processing.</string>
+    <string name="transition_separate_saved">Vocals over accompaniment · saved playback</string>
+    <string name="transition_separate_fallback">On-device only, for local or downloaded tracks. Removes outgoing vocals early and introduces incoming accompaniment later. If separation is unavailable, too hot, or not ready in time, the same transition plays with the original audio.</string>
 </resources>

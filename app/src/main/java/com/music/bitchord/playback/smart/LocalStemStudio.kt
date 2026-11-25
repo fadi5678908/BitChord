@@ -12,13 +12,13 @@ import kotlin.math.roundToInt
 
 /** One local playlist-pair audition in memory. No remote processing or source substitution. */
 internal class LocalStemStudio(private val context: Context, private val analyzer: TrackAnalyzer) {
-    private data class Key(val outUri: String, val inUri: String, val out: Double, val inn: Double, val overlap: Double)
-    private data class Prepared(val key: Key, val out: VocalTracker.Separated, val inn: VocalTracker.Separated, val lead: Double)
+    internal data class Key(val outUri: String, val inUri: String, val out: Double, val inn: Double, val overlap: Double)
+    internal data class Prepared(val key: Key, val out: VocalTracker.Separated, val inn: VocalTracker.Separated, val lead: Double)
     private var cached: Prepared? = null // only accessed under the service's decoder mutex
     private val folder get() = File(context.cacheDir, "local_stem_audition").apply { mkdirs() }
 
-    fun render(outgoing: Song, incoming: Song, draft: PlaylistTransitionDraft, mode: LocalStemAudition,
-               abort: () -> Boolean, progress: (String) -> Unit): Pair<File, Float> {
+    fun prepare(outgoing: Song, incoming: Song, draft: PlaylistTransitionDraft,
+               abort: () -> Boolean, progress: (String) -> Unit = {}): Prepared {
         check(!abort())
         if (Build.VERSION.SDK_INT >= 29) {
             check(context.getSystemService(PowerManager::class.java).currentThermalStatus < PowerManager.THERMAL_STATUS_SEVERE) { "Device is too hot" }
@@ -51,6 +51,13 @@ internal class LocalStemStudio(private val context: Context, private val analyze
             val inn = separate(inUri, window.inStart, minOf(window.inEnd + 2, duration(inUri)))
             Prepared(key, out, inn, lead).also { cached = it }
         }
+        check(!abort())
+        return prepared
+    }
+
+    fun render(outgoing: Song, incoming: Song, draft: PlaylistTransitionDraft, mode: LocalStemAudition,
+               abort: () -> Boolean, progress: (String) -> Unit): Pair<File, Float> {
+        val prepared = prepare(outgoing, incoming, draft, abort, progress)
         check(!abort())
         progress("render")
         // One output file retained. Never leave partially rendered WAVs discoverable by playback.

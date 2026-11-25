@@ -40,7 +40,7 @@
     <string name="transition_scope">لهذا الزوج داخل هذه القائمة فقط</string>
     <string name="transition_exit_point">بدء خروج الأغنية عند</string>
     <string name="transition_entry_point">دخول الأغنية التالية عند</string>
-    <string name="transition_timing_help">اسحب الموجة لتغيير منطقة التداخل، واسحب النقطة البيضاء أو استخدم شريطها لتعديل مستوى الصوت المسموع. يطبّق الحفظ التوقيت والتلاشي لهذا الزوج في قائمة التشغيل بالسرعة الطبيعية، حتى عند إيقاف Automix. لا يشمل التشغيل العشوائي أو الراديو. الموجات تمثل ترددات صوتية وليست فصلًا للأصوات والآلات.</string>
+    <string name="transition_timing_help">في الوضع المخصص اسحب الموجات لتحريك منطقة التداخل وعدّل المقابض البيضاء لمستوى الصوت. يحفظ زر التطبيق الوضع المختار ومفتاح فصل الغناء لهذا الزوج في القائمة حتى عند إيقاف Automix العام. يستثني التشغيل العشوائي والراديو. ألوان الموجات ترددات وليست مسارات مفصولة.</string>
     <string name="transition_invalid_timing">يلزم توفر مدة الأغنيتين وعدم التباس الإدخالات المكررة. اجعل المقطعين الملوّنين داخل مدتي الأغنيتين.</string>
     <string name="transition_applied">تم الحفظ. سيُستخدم التوقيت المفعّل لهذا الزوج داخل القائمة.</string>
     <string name="transition_apply">تطبيق وحفظ</string>
@@ -56,13 +56,25 @@
     <string name="transition_preview_failed">تعذّر إكمال الانتقال. تحقّق من مصدر الصوت والمدد وإعدادات الإخراج. المعاينة غير متاحة مع البث الخارجي أو الاستماع الجماعي أو الإخراج المطابق للبت أو مؤقت النوم بنهاية الأغنية.</string>
     <string name="transition_fine">ضبط دقيق</string>
     <string name="transition_hide_fine">إخفاء الضبط الدقيق</string>
-    <string name="transition_audition_mode">صوت المعاينة</string>
+    <string name="transition_audition_mode">مراقبة الاستماع · لا تُحفظ</string>
     <string name="transition_mode_normal">المزيج الأصلي</string>
     <string name="transition_mode_vocal_rhythm">غناء فوق الإيقاع</string>
     <string name="transition_mode_vocals">الغناء فقط</string>
     <string name="transition_mode_music">الآلات فقط</string>
-    <string name="transition_stem_notice">معاينة لقائمة محلية: يجب أن تكون الأغنيتان ملفين على الهاتف، وتشمل الملفات المنزّلة. يعيد النموذج بناء الغناء والمرافقة على الجهاز وقد تبقى تسريبات صوتية. لا يفصل الطبول والباس مستقلين. أوضاع الفصل للمعاينة فقط؛ يحفظ زر التطبيق التوقيت والتلاشي ولا يفعّل المسارات المفصولة في التشغيل العادي.</string>
+    <string name="transition_stem_notice">يجب أن تكون الأغنيتان ملفين على الهاتف. يعيد النموذج بناء الغناء والمرافقة مع احتمال تسرب صوتي. لا يفصل الطبول والباس مستقلين. مفتاح التشغيل المحفوظ أعلاه مستقل عن خيارات الاستماع هذه.</string>
     <string name="transition_separate_out">جارٍ فصل مقطع الأغنية الحالية… يمكنك الإلغاء.</string>
     <string name="transition_separate_in">جارٍ فصل مقطع الأغنية التالية… يمكنك الإلغاء.</string>
     <string name="transition_render_stems">جارٍ تجهيز معاينة الغناء والإيقاع على الهاتف…</string>
+    <string name="transition_type">نوع الانتقال</string>
+    <string name="transition_automatic">تلقائي</string>
+    <string name="transition_custom">مخصص</string>
+    <string name="transition_crossfade">تلاشي متداخل</string>
+    <string name="transition_auto_help">انتقال مباشر بالسرعة الطبيعية. يستخدم بيانات التوقيت المحلية المتاحة، وإلا يمزج آخر ٦ ثوانٍ. دون حلقات أو تغيير النغمة أو انتظار نموذج التحليل.</string>
+    <string name="transition_custom_help">حدد نقطة الخروج والدخول ومنحنيات مستوى الصوت لهذا الزوج داخل القائمة.</string>
+    <string name="transition_crossfade_help">تداخل بسيط متساوي القدرة من نهاية الأغنية إلى بداية التالية، دون معالجة فصل.</string>
+    <string name="transition_separate_saved">غناء فوق المرافقة · للتشغيل المحفوظ</string>
+    <string name="transition_separate_fallback">على الهاتف فقط، للأغاني المحلية أو المنزّلة. يخفض غناء الأغنية المغادرة مبكرًا ويؤخر مرافقة الأغنية القادمة. إذا تعذر الفصل أو ارتفعت الحرارة أو لم يجهز في الوقت المناسب، يعمل الانتقال نفسه بالصوت الأصلي.</string>
+    <string name="automix_enabled_subtitle">انتقالات تلقائية داخل قوائم التشغيل فقط. خصص كل زوج من قائمته؛ الألبومات والراديو والتشغيل العشوائي دون مزج.</string>
+    <string name="automix_disabled_subtitle">فعّل الانتقالات التلقائية للقوائم. تظل إعدادات الأزواج المحفوظة فعالة عند إيقاف هذا المفتاح.</string>
+    <string name="crossfade_subtitle">تداخل افتراضي لقوائم التشغيل فقط. الأولوية لإعدادات الأزواج المحفوظة.</string>
 </resources>

@@ -1,6 +1,7 @@
 package com.music.bitchord.data.settings
 
 import android.content.Context
+import com.music.bitchord.playback.smart.PlaylistTransitionMode
 import com.music.bitchord.playback.smart.PlaylistTransitionDraft
 import com.music.bitchord.playback.smart.PlaylistTransitionKey
 import com.music.bitchord.playback.smart.StemHandoff
@@ -16,6 +17,9 @@ class PlaylistTransitionDraftStore private constructor(context: Context) {
 
     private val snapshots = ConcurrentHashMap<PlaylistTransitionKey, PlaylistTransitionDraft>()
 
+    @Volatile var loaded: Boolean = false
+        private set
+
     init {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             prefs.all.values.filterIsInstance<String>().forEach { encoded ->
@@ -25,9 +29,11 @@ class PlaylistTransitionDraftStore private constructor(context: Context) {
                     read(key)?.let { snapshots.putIfAbsent(key, it) }
                 }
             }
+            loaded = true
         }
     }
 
+    fun snapshot(key: PlaylistTransitionKey): PlaylistTransitionDraft? = snapshots[key]
     fun active(key: PlaylistTransitionKey): PlaylistTransitionDraft? = snapshots[key]?.takeIf { it.enabled }
 
     fun read(key: PlaylistTransitionKey): PlaylistTransitionDraft? {
@@ -45,6 +51,8 @@ class PlaylistTransitionDraftStore private constructor(context: Context) {
                 outgoingTrimSeconds = root.getDouble("trim").toFloat(),
                 incomingCueSeconds = root.getDouble("cue").toFloat(),
                 enabled = root.optBoolean("enabled", false),
+                mode = PlaylistTransitionMode.entries.firstOrNull { it.name == root.optString("mode") } ?: PlaylistTransitionMode.CUSTOM,
+                separateVocals = root.optBoolean("separateVocals", false),
                 volumeHandoff = StemHandoff(root.optDouble("volumeUntil", 1.0).toFloat(), root.optDouble("volumeFrom", 0.0).toFloat()),
                 outgoingStartSeconds = if (root.has("outStart")) root.getDouble("outStart").toFloat() else null,
                 incomingStartSeconds = if (root.has("inStart")) root.getDouble("inStart").toFloat() else null,
@@ -66,6 +74,7 @@ class PlaylistTransitionDraftStore private constructor(context: Context) {
             layers.put(stem.name, JSONObject().put("until", handoff.outgoingUntil).put("from", handoff.incomingFrom))
         }
         val encoded = JSONObject().put("enabled", d.enabled)
+            .put("mode", d.mode.name).put("separateVocals", d.separateVocals)
             .put("volumeUntil", d.volumeHandoff.outgoingUntil).put("volumeFrom", d.volumeHandoff.incomingFrom)
             .apply {
                 d.outgoingStartSeconds?.let { put("outStart", it) }

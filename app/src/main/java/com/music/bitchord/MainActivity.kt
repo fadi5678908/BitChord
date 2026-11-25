@@ -2113,7 +2113,7 @@ private fun BitChordApp(
                             song.albumName
                         },
                         playbackSource = target.title,
-                        playbackSourceType = PlaybackSourceType.BROWSE,
+                        playbackSourceType = if (target.type == BrowseType.PLAYLIST) PlaybackSourceType.PLAYLIST else PlaybackSourceType.BROWSE,
                         playbackSourceId = target.browseId,
                     )
                 },
@@ -2684,7 +2684,7 @@ private fun BitChordApp(
                 navigator.clear()
 
                 when (sourceType) {
-                    PlaybackSourceType.BROWSE -> {
+                    PlaybackSourceType.BROWSE, PlaybackSourceType.PLAYLIST -> {
                         val id = sourceId ?: return@openSource
                         viewModel.closeMoodGenre()
                         viewModel.openDetail(id, sourceTitle)
@@ -3185,7 +3185,7 @@ private fun BitChordApp(
                                 }
                                 val source = QueueSource(
                                     page.title,
-                                    PlaybackSourceType.BROWSE,
+                                    if (page.type == BrowseType.PLAYLIST) PlaybackSourceType.PLAYLIST else PlaybackSourceType.BROWSE,
                                     page.browseId,
                                 )
                                 val selected = songs.getOrNull(index)

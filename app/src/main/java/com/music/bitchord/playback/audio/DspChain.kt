@@ -51,6 +51,7 @@ class DspChain(
 
     /** A new track has begun gaplessly on this sink; see [LoudnessProcessor.onStreamBoundary]. */
     fun onStreamBoundary() {
+        transition.localStems.onFlush()
         loudness.onStreamBoundary()
     }
 
@@ -88,6 +89,7 @@ class DspChain(
 
     @Suppress("DEPRECATION")
     override fun flush() {
+        transition.localStems.onFlush()
         spatial.flush()
         equalizer.flush()
         transition.flush()
@@ -96,6 +98,7 @@ class DspChain(
 
     override fun reset() {
         processCounter = 0L
+        transition.localStems.onFlush()
         spatial.reset()
         equalizer.reset()
         transition.reset()

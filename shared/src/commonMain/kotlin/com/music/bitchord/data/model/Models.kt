@@ -367,6 +367,7 @@ enum class PlaybackSourceType {
     REPLAY,
     EXPLORE,
     BROWSE,
+    PLAYLIST,
     SHARED_LINK,
     QUEUE,
 }

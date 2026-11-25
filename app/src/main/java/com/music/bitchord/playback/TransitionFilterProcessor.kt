@@ -73,6 +73,7 @@ class TransitionFilterProcessor : BaseAudioProcessor() {
      * that already trades roles with its player at every handoff, so the
      * controller reaches the right sink by the same route as the filters.
      */
+    val localStems = com.music.bitchord.playback.audio.LocalStemPort()
     val loop = com.music.bitchord.playback.loopmix.LoopMixPort()
 
     // ---- Echo out ------------------------------------------------------------

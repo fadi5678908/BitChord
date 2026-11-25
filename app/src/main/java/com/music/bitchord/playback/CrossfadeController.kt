@@ -159,6 +159,8 @@ class CrossfadeController(
      */
     private val requestAnalysis: (MediaItem, Long) -> Unit = { _, _ -> },
     private val customTransitionFor: (MediaItem, MediaItem) -> PlaylistTransitionDraft? = { _, _ -> null },
+    private val onPlaylistPlanInvalidated: () -> Unit = {},
+    private val onPlaylistPlan: (MediaItem, MediaItem, PlaylistTransitionDraft, TransitionPlan) -> Unit = { _, _, _, _ -> },
     /**
      * The low-pass and high-pass riding each side of a transition. This is what
      * makes a plan's
@@ -798,6 +800,7 @@ class CrossfadeController(
     }
 
     fun release() {
+        onPlaylistPlanInvalidated()
         automixPlanner.clear()
         tickerJob?.cancel()
         tickerJob = null
@@ -839,6 +842,7 @@ class CrossfadeController(
      * player this class has finished with.
      */
     fun onSkipRequested() {
+        onPlaylistPlanInvalidated()
         if (phase != Phase.IDLE) bail()
     }
 
@@ -917,7 +921,7 @@ class CrossfadeController(
         val current = player.currentMediaItem ?: return
         val nextIndex = player.nextMediaItemIndex
         val custom = if (nextIndex != C.INDEX_UNSET) customTransitionFor(current, player.getMediaItemAt(nextIndex)) else null
-        if (!AppSettings.smartFadeEnabled.value && custom == null) return
+        if (custom == null) { clearPlanDiagnostics(); onPlaylistPlanInvalidated(); return }
         val now = SystemClock.elapsedRealtime()
         if (now - pausedMarkerAt < PAUSED_MARKER_STEP_MS) return
         pausedMarkerAt = now
@@ -976,84 +980,47 @@ class CrossfadeController(
             // The marker describes a transition that is no longer going to
             // happen, and the flag a mix that is no longer running; both would
             // otherwise sit on screen for as long as the party lasts.
-            AppSettings.smartTransitionWindow.value = null
+            clearPlanDiagnostics()
+            onPlaylistPlanInvalidated()
             AppSettings.smartMixInProgress.value = false
             return
         }
         // Bit-perfect output carries one stream to the DAC, unchanged. A blend
         // needs two, with gain on both, so the queue plays gapless instead.
         if (BitPerfectOutput.status.value.active) {
-            AppSettings.smartTransitionWindow.value = null
+            clearPlanDiagnostics()
+            onPlaylistPlanInvalidated()
             return
         }
         // Nothing to transition *into*, so any analysis state left over from the
         // previous pair is stale — the last track of a queue should not still be
         // claiming both songs are measured.
         if (!player.hasNextMediaItem()) {
-            AppSettings.smartTransitionWindow.value = null
+            clearPlanDiagnostics()
+            onPlaylistPlanInvalidated()
             return
         }
 
         val duration = player.duration
         if (duration == C.TIME_UNSET || duration <= 0L) return
 
-        // Repeating one track would crossfade it into itself, so nothing is
-        // armed and no window is marked — but the queue behind the loop has not
-        // moved, and what sits after it is still the track that plays next the
-        // moment repeat-one comes off.
-        //
-        // Returning here outright is what made turning repeat off look like it
-        // lost an analysis. Analysis is only ever asked for on the way to
-        // planning a transition, so for as long as the loop ran nothing asked
-        // for the following track at all, and the request that finally arrived
-        // when repeat came off was the *first* one — a whole-track decode
-        // starting from nothing on a song that was by then seconds away, where
-        // an unlooped queue would have had it measured minutes earlier. The
-        // measurement is the same either way, so it may as well be made during
-        // the loop rather than after it.
         if (player.repeatMode == Player.REPEAT_MODE_ONE) {
-            if (AppSettings.smartFadeEnabled.value) requestAnalysisAround(player, duration)
-            // Stale otherwise: the marker would keep describing the transition
-            // planned for this pair before the loop went on, at a point the
-            // playhead now runs past on every lap without anything happening.
-            AppSettings.smartTransitionWindow.value = null
+            clearPlanDiagnostics()
+            onPlaylistPlanInvalidated()
             return
         }
-
-        // Automix is its own on/off, independent of the manual crossfade
-        // length: it decides its own duration from each pair of tracks (beats,
-        // tempo, structure), so requiring a nonzero [AppSettings.crossfadeSeconds]
-        // first would tie an automatic feature to a manual one it doesn't use.
+        // Profiles can only be created in a playlist editor, and the service
+        // validates ordered context/entry identities before returning one.
+        // Retire the old global Automix/manual slider routes, including albums/radio.
         val custom = player.currentMediaItem?.let { current ->
             customTransitionFor(current, player.getMediaItemAt(player.nextMediaItemIndex))
         }
-        if (AppSettings.smartFadeEnabled.value || custom != null) {
-            considerSmartTransition(duration, custom = custom)
+        if (custom == null) {
+            clearPlanDiagnostics()
+            onPlaylistPlanInvalidated()
             return
         }
-
-        if (configuredFadeMs() <= 0L) return
-        val fade = fadeFor(duration)
-        if (fade <= 0L) return
-
-        player.currentMediaItem?.mediaId?.let { plannedTransition = it to duration - fade }
-        val remaining = duration - player.currentPosition
-        if (SleepTimer.afterTrack.value) {
-            // The sleep timer is due when this track ends. There is no next
-            // track to arm a crossfade into, so run the same fade-out this
-            // pair would otherwise have used against silence instead — see
-            // [beginSleepFadeOut]. No arm-lead margin: nothing is buffering.
-            if (remaining > fade) return
-            beginSleepFadeOut(fade)
-            return
-        }
-        holdAhead(player, duration)
-        // Arm early: the standby has to open the incoming track and buffer to
-        // its cue point, and that work has to be finished by the time the fade
-        // is due rather than started then.
-        if (remaining > fade + ARM_LEAD_MS) return
-
-        begin(fade, endMs = duration, smart = false)
+        considerSmartTransition(duration, custom = custom)
     }
 
     /**
@@ -1081,7 +1048,8 @@ class CrossfadeController(
         // analysis and cueing are deliberately never applied to either side
         // of a transition involving a video row.
         if (currentItem.isVideoOrigin || nextItem.isVideoOrigin) {
-            AppSettings.smartTransitionWindow.value = null
+            clearPlanDiagnostics()
+            onPlaylistPlanInvalidated()
             AppSettings.smartMixInProgress.value = false
             return
         }
@@ -1089,7 +1057,8 @@ class CrossfadeController(
 
         // Even for the marker alone: a stored analysis is only loaded off disk
         // by asking for it, and without that a paused track plans blind.
-        if (custom == null) requestAnalysisAround(player, duration)
+        // Explicit playlist modes use a bounded policy. The retired global
+        // loop/ML planner is not scheduled from normal playback.
 
         // Automix owns its timing, including the fallback. The manual crossfade
         // slider is hidden while it is on, so a stale slider value must not
@@ -1103,16 +1072,10 @@ class CrossfadeController(
         // The DJ planner is Automix now; there is no separate mode switch.
         val advanced = true
 
-        val plan = if (custom != null) {
-            custom.playbackPlan(duration / 1000.0, nextDuration / 1000.0, player.currentPosition / 1000.0)
-                ?: run { clearPlanDiagnostics(); return }
-        } else automixPlanner.plan(
-            outgoing = currentAnalysis,
-            incoming = nextAnalysis,
-            current = currentItem.toTransitionInfo(duration),
-            next = nextItem.toTransitionInfo(nextDuration),
-            currentTime = player.currentPosition / 1000.0,
-        )
+        val profile = custom ?: return
+        val plan = profile.playbackPlan(duration / 1000.0, nextDuration / 1000.0,
+            player.currentPosition / 1000.0, currentAnalysis, nextAnalysis)
+            ?: run { clearPlanDiagnostics(); onPlaylistPlanInvalidated(); return }
         // One line per distinct verdict rather than one per 250ms tick, so the
         // log says what the planner decided for this pair without burying it.
         val verdict = "${plan.reason}|${plan.transitionStyle}|fade=${plan.fadeMs}" +
@@ -1133,25 +1096,8 @@ class CrossfadeController(
             )
         }
 
+        if (!markerOnly && custom != null) onPlaylistPlan(currentItem, nextItem, custom, plan)
         planDiagnostics.remember(planPair(currentItem, nextItem), plan)
-
-        // The loop mix first: a pair it can do never reaches the blend below.
-        val loop = if (custom != null) null else loopPlanFor(
-            player, currentItem, nextItem, currentAnalysis, nextAnalysis, duration, nextDuration, analysisState,
-        )
-        if (loop != null && nextStreamReady(nextItem)) {
-            val loopStartMs = (loop.out.loopStart * 1000).roundToLong()
-            AppSettings.smartTransitionWindow.value = TransitionWindow(
-                start = (loopStartMs.toFloat() / duration).coerceIn(0f, 1f),
-                end = 1f,
-            )
-            if (markerOnly) return
-            plannedTransition = currentItem.mediaId to loopStartMs
-            holdAhead(player, duration)
-            if (loopStartMs - player.currentPosition > LOOP_ARM_LEAD_MS) return
-            beginLoop(player, loop, currentItem, nextItem, duration, nextDuration)
-            return
-        }
 
         // Gated on *both* tracks being measured, not on the plan alone. Until
         // then the planner is still sizing the overlap from a fallback that
@@ -1671,6 +1617,7 @@ class CrossfadeController(
             val adjusted = armed?.forPlaybackStart(out.currentPosition / 1000.0)
             if (adjusted?.blocked == true) return bail()
             if (adjusted != null && adjusted !== armed) {
+                onPlaylistPlanInvalidated()
                 fadeMs = adjusted.fadeMs
                 incomingPlaybackRate = adjusted.incomingPlaybackRate
                 into.setPlaybackSpeed((AppSettings.playbackSpeed.value * incomingPlaybackRate).toFloat())
@@ -2731,7 +2678,9 @@ class CrossfadeController(
         val player = active()
         val item = player.currentMediaItem
         val text = when {
-            !AppSettings.smartFadeEnabled.value || item == null || ListenTogether.state.value.inParty -> null
+            item == null || ListenTogether.state.value.inParty -> null
+            !smartFadeActive && (player.nextMediaItemIndex == C.INDEX_UNSET ||
+                customTransitionFor(item, player.getMediaItemAt(player.nextMediaItemIndex)) == null) -> null
             else -> describeAutomix(player, item)
         }
         if (AppSettings.automixDetail.value != text) AppSettings.automixDetail.value = text
@@ -2813,6 +2762,7 @@ class CrossfadeController(
      * away gracefully.
      */
     private fun bail() {
+        onPlaylistPlanInvalidated()
         if (phase == Phase.IDLE || phase == Phase.BAILING) return
         if (phase == Phase.LOOP_ARMING || phase == Phase.LOOP_RUNNING) {
             loopBail("interrupted", settle = false)
@@ -2844,6 +2794,7 @@ class CrossfadeController(
 
     private fun finish() {
         val wasTransitioning = phase != Phase.IDLE
+        onPlaylistPlanInvalidated()
         planInFlight = null
         smartFadeActive = false
         clearPlanDiagnostics()

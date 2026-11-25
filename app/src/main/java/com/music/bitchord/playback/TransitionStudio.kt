@@ -29,6 +29,7 @@ internal suspend fun MediaController.studioWave(song: Song, from: Float, to: Flo
 internal suspend fun MediaController.studioPlay(owner: String, out: Song, inn: Song, draft: PlaylistTransitionDraft, stems: com.music.bitchord.playback.smart.LocalStemAudition? = null): Boolean {
     val d = draft.sanitized()
     val args = bundleOf("owner" to owner, "out" to out.toSongBundle(), "in" to inn.toSongBundle(),
+        "mode" to d.mode.name, "separateVocals" to d.separateVocals,
         "overlap" to d.overlapSeconds, "outStart" to d.outgoingStartSeconds,
         "inStart" to d.incomingStartSeconds, "trim" to d.outgoingTrimSeconds, "cue" to d.incomingCueSeconds,
         "until" to d.volumeHandoff.outgoingUntil, "from" to d.volumeHandoff.incomingFrom)
@@ -43,6 +44,9 @@ internal fun MediaController.studioStop(owner: String) {
 internal fun studioDraft(args: Bundle) = PlaylistTransitionDraft(
     overlapSeconds = args.getFloat("overlap", 6f), outgoingTrimSeconds = args.getFloat("trim"),
     incomingCueSeconds = args.getFloat("cue"), enabled = true,
+    mode = com.music.bitchord.playback.smart.PlaylistTransitionMode.entries.firstOrNull { it.name == args.getString("mode") }
+        ?: com.music.bitchord.playback.smart.PlaylistTransitionMode.CUSTOM,
+    separateVocals = args.getBoolean("separateVocals"),
     outgoingStartSeconds = if (args.containsKey("outStart")) args.get("outStart") as? Float else null,
     incomingStartSeconds = if (args.containsKey("inStart")) args.get("inStart") as? Float else null,
     volumeHandoff = StemHandoff(args.getFloat("until", 1f), args.getFloat("from", 0f)),
