@@ -524,3 +524,85 @@ succeeded and verified ZIP integrity and Android APK signatures before upload:
 
 This is a smaller, architecture-specific retry, not a confirmed repair of the
 user's installer error. Actual Pixel 6/Android 17 installation remains untested.
+
+## Actual local two-source auditions (partial implementation, not automatic stems)
+
+Source `6dd69baab0895d18c7c488c59da586ad03b80c35` adds a real reconstruction
+path to the existing bundled open-unmix vocal model. Previously its output was
+reduced to vocal-presence scores only. `VocalTracker.separate` now preserves
+per-bin target/mix ratios, clamps invalid masks, and reconstructs interleaved
+stereo vocals with mixture phase, inverse FFT, periodic Hann overlap-add and
+window-squared normalization. Accompaniment is the original stereo mixture
+minus reconstructed vocals. It is **two sources**, not independent drums, bass
+and other; magnitude masking can leave bleed and other artifacts.
+
+`LocalStemStudio` accepts only file/content playback URIs (including verified
+downloads), reads actual container durations, decodes short selected windows,
+uses the existing vocal model/session lock, and writes an app-cache PCM16 WAV.
+Each model input is bounded to 20 seconds, the actual overlap to 2–12 seconds;
+no whole-song separation, remote inference or matched replacement source. Only
+one prepared pair is retained in memory and one audition WAV retained on disk.
+It never writes/deletes original audio. Severe thermal status refuses work.
+Preparation pauses normal playback and temporarily suspends competing analysis.
+Cancellation is checked before/between native/model stages; an already running
+ORT call is not interrupted mid-kernel. Normal service audio focus applies to
+playback of the rendered audition. The new owner-scoped service command supports
+outgoing/incoming/render stage messages and cancellation on Stop/pair close.
+
+Audition modes are original two-deck mix, vocal-over-rhythm, vocals only and
+accompaniment only. In vocal-over-rhythm, outgoing vocals leave early and incoming
+music enters late, creating an incoming-vocal/outgoing-music middle. This uses the
+selected source cue, **not automatic lyrical-phrase discovery or a new beat-sync
+engine**. Pick an incoming cue containing vocals and rhythm-compatible material.
+No claims about Spotify's proprietary implementation are made.
+
+The separation choices are explicitly **audition-only**. Apply still saves
+normal playlist timing/master fades. Automatic normal-playback separated stems,
+four-stem controls, automatic vocal cue selection and a confirmed end-to-end
+repair of the user's global Automix complaint are still unfinished. Do not
+advertise the new WAV preview as fixing every automatic transition.
+
+Other functional corrections:
+- The waveform viewport is held while dragging; crossing its six-second chunk
+  boundary no longer restarts pointer input and cancels the drag. Horizontal
+  gesture handling also lets vertical scrolling work over a waveform.
+- Sound-mode controls/progress are explicit, and lengthy help moved out of the
+  fixed footer. These changes are not phone UI acceptance testing.
+- Stereo decoder reads seek to the previous sync point and trim before retaining
+  PCM, avoiding accumulation of everything before a late selected window. PCM16
+  output is requested and checked rather than treating arbitrary PCM as shorts.
+- Complete local-file structural evidence is published as provisional while the
+  heavy regional models refine it. It is not persisted as a finished model grid,
+  and the automatic planner's evidence/safety guards have not been removed.
+
+Verification:
+- Host C++ reconstruction regressions passed for identity/silent/fractional and
+  NaN masks, asymmetric stereo, boundary lengths and vocal+residual conservation.
+- Shared blend regressions cover endpoint continuity, the vocal-over-music middle,
+  solo-mode isolation and finite bounded gains.
+- Both Android instrumentation tests passed on an API 35 x86_64 emulator: actual
+  bundled-model/JNI reconstruction and generated local stereo WAV decode → model
+  → render in all three separated audition modes, without changing originals.
+- English/Arabic XML and all 43 editor resource references validated.
+- Run https://github.com/fadi5678908/BitChord/actions/runs/45689497958 succeeded
+  (10m22s job): shared/Android unit tasks, C++ regression, real model Android
+  instrumentation, APK assembly and upload. Artifact `15059086571`, 508,366,231
+  bytes compressed. Synthetic tests do not establish perceptual music quality,
+  physical Pixel 6/Android 17 performance or gesture/audio acceptance.
+
+ARM64 asset was extracted unchanged, verified (ZIP and APK signatures) and
+published by successful run 45691262236:
+https://github.com/fadi5678908/BitChord/releases/download/automix-test-6dd69ba/BitChord-Dev-Automix-arm64-v8a.apk
+Size **141,446,809 bytes**; SHA-256
+`4d51a8462c02048d8124c05ae1b9e31b33deed7a505ecf13811eca5aea8a046b`.
+Development signing still may differ from earlier runner-generated keys; back
+up data before any removal, rather than assuming an in-place upgrade is possible.
+
+Phone acceptance pending: choose two local/downloaded playlist tracks of known
+length, select an incoming vocal cue and short overlap, audition solo vocals and
+solo accompaniment before vocal-over-rhythm. Confirm that selection changes are
+audible, vertical scrolling/long horizontal drags work, Stop/close during model
+preparation does not start audio later, and another user queue is not paused by
+an old audition. Compare with original mode at conservative volume. File-backed
+access is more predictable, but neural separation still costs CPU and is not
+assumed instant merely because audio is local.
