@@ -1,0 +1,75 @@
+name: Verify published Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag containing the universal test APK'
+        required: true
+        type: string
+      compare_tag:
+        description: 'Optional previous release tag to check update-signature compatibility'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify the distributed APK and compare signing certificates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          COMPARE_TAG: ${{ inputs.compare_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE=BitChord-Dev-Automix-universal.apk
+          SIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n 1)
+          test -n "$SIGNER" && test -n "$AAPT"
+          gh release download "$RELEASE_TAG" --pattern "$FILE" --dir current
+          unzip -tq "current/$FILE"
+          "$SIGNER" verify --verbose --print-certs "current/$FILE" | tee current-cert.txt
+          "$AAPT" dump badging "current/$FILE" > current-manifest.txt
+          {
+            printf 'Release: %s\n' "$RELEASE_TAG"
+            sha256sum "current/$FILE"
+            cat current-cert.txt
+            grep -E '^(package:|sdkVersion:|targetSdkVersion:|native-code:)' current-manifest.txt
+          } | tee verification.txt
+          echo '::notice::Published APK ZIP integrity and Android signature verification passed.'
+          while IFS= read -r line; do echo "::notice::$line"; done < <(grep -E '^(package:|sdkVersion:|targetSdkVersion:|native-code:)' current-manifest.txt)
+          if [[ -n "$COMPARE_TAG" ]]; then
+            gh release download "$COMPARE_TAG" --pattern "$FILE" --dir previous
+            "$SIGNER" verify --print-certs "previous/$FILE" > previous-cert.txt
+            BEFORE=$(grep '^Signer #1 certificate SHA-256 digest:' previous-cert.txt)
+            AFTER=$(grep '^Signer #1 certificate SHA-256 digest:' current-cert.txt)
+            {
+              printf '\nPrevious release: %s\n%s\nCurrent: %s\n' "$COMPARE_TAG" "$BEFORE" "$AFTER"
+              if [[ "$BEFORE" == "$AFTER" ]]; then
+                echo 'Signing certificates MATCH. This check does not prove installability on a particular phone.'
+                echo '::notice::Previous and current APK signing certificates match.'
+              else
+                echo 'Signing certificates DIFFER. Android will not accept a normal in-place update between these APKs. Do not uninstall without backing up app data.'
+                echo '::warning::APK signing certificates DIFFER: normal in-place update from the compared release is not supported. Back up data before any removal.'
+              fi
+            } | tee -a verification.txt
+          fi
+          cat verification.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Save APK verification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-verification
+          path: |
+            verification.txt
+            current-cert.txt
+            current-manifest.txt
+            previous-cert.txt
+          if-no-files-found: warn
