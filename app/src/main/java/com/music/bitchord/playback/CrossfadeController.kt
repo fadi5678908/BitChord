@@ -161,6 +161,7 @@ class CrossfadeController(
     private val customTransitionFor: (MediaItem, MediaItem) -> PlaylistTransitionDraft? = { _, _ -> null },
     private val onPlaylistPlanInvalidated: () -> Unit = {},
     private val onPlaylistPlan: (MediaItem, MediaItem, PlaylistTransitionDraft, TransitionPlan) -> Unit = { _, _, _, _ -> },
+    private val playlistStemDetail: () -> String? = { null },
     /**
      * The low-pass and high-pass riding each side of a transition. This is what
      * makes a plan's
@@ -925,8 +926,10 @@ class CrossfadeController(
         val now = SystemClock.elapsedRealtime()
         if (now - pausedMarkerAt < PAUSED_MARKER_STEP_MS) return
         pausedMarkerAt = now
-        if (versionSwapActive() || ListenTogether.state.value.inParty) return
-        if (!player.hasNextMediaItem() || player.repeatMode == Player.REPEAT_MODE_ONE) return
+        if (versionSwapActive() || ListenTogether.state.value.inParty || BitPerfectOutput.status.value.active ||
+            !player.hasNextMediaItem() || player.repeatMode == Player.REPEAT_MODE_ONE) {
+            clearPlanDiagnostics(); onPlaylistPlanInvalidated(); return
+        }
         // A queue restored paused is not prepared yet, so the player has no
         // duration until play: the runtime the item was queued with stands in,
         // then the analysed one.
@@ -960,7 +963,7 @@ class CrossfadeController(
         // party case below: a version swap is a between-tracks affair on the
         // same item, so the transition window and mix flag it would have
         // armed still describe the next track correctly once the swap lets go.
-        if (versionSwapActive()) return
+        if (versionSwapActive()) { onPlaylistPlanInvalidated(); return }
         // Not while listening together. A blend starts the next track early, by
         // a length this device decides for itself from its own copy of the
         // audio — so in a party every member would begin the next song at a
@@ -1053,7 +1056,11 @@ class CrossfadeController(
             AppSettings.smartMixInProgress.value = false
             return
         }
-        val nextDuration = nextItemDurationMs(nextIndex, nextItem)
+        // An unprepared local queue item may have no tagged runtime. This
+        // estimate permits prebuffering only; driveArming still requires both
+        // real decoder durations to authorize the selected overlap.
+        val nextDuration = nextItemDurationMs(nextIndex, nextItem).takeIf { it > 0L }
+            ?: if (custom?.mode != com.music.bitchord.playback.smart.PlaylistTransitionMode.CUSTOM) 60_000L else 0L
 
         // Even for the marker alone: a stored analysis is only loaded off disk
         // by asking for it, and without that a paused track plans blind.
@@ -2721,7 +2728,8 @@ class CrossfadeController(
             val why = " · ${plan.routingReason}"
             val noLoop = loopRefusal?.let { " · no loop: $it" }.orEmpty()
             return when (plan.transitionStyle) {
-                TransitionStyle.EQUAL_POWER -> if ("playlist-custom-timing" in plan.policyReasons) "Playlist mix · $whenText · $length" else "Automix · Crossfade (fallback) $whenText · ${"%.1f".format(Locale.ROOT, plan.fadeSeconds)} s$why$noLoop"
+                TransitionStyle.EQUAL_POWER -> if ("playlist-custom-timing" in plan.policyReasons) "Playlist mix · ${plan.reason.removePrefix("playlist-")} · $whenText · $length" +
+                    playlistStemDetail()?.let { " · $it" }.orEmpty() else "Automix · Crossfade (fallback) $whenText · ${"%.1f".format(Locale.ROOT, plan.fadeSeconds)} s$why$noLoop"
                 TransitionStyle.DJ_FILTER -> "Automix · filter mix $whenText · $length$why$noLoop"
                 else -> {
                     val rate = plan.incomingPlaybackRate
@@ -2868,8 +2876,17 @@ class CrossfadeController(
 
     /** Still a next track, still playing, still switched on — by whichever setting armed this one. */
     private fun customTimingStillEnabled(): Boolean {
-        val out = outgoing?.currentMediaItem ?: return false
+        if (versionSwapActive() || ListenTogether.state.value.inParty || BitPerfectOutput.status.value.active ||
+            active().repeatMode == Player.REPEAT_MODE_ONE) return false
+        val outPlayer = outgoing ?: return false
+        val out = outPlayer.currentMediaItem ?: return false
         val inn = incoming?.currentMediaItem ?: return false
+        if (!handedOff) {
+            val next = outPlayer.nextMediaItemIndex
+            if (next == C.INDEX_UNSET) return false
+            val actual = outPlayer.getMediaItemAt(next)
+            if (actual.mediaId != inn.mediaId || actual.queueEntryId != inn.queueEntryId) return false
+        }
         return customTransitionFor(out, inn) != null
     }
 

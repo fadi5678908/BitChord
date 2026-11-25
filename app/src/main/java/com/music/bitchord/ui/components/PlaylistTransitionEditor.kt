@@ -86,6 +86,7 @@ fun PlaylistTransitionEditor(playlistId: String, songs: List<Song>, onDismiss: (
                 draft = stored ?: PlaylistTransitionDraft(enabled = true, mode = PlaylistTransitionMode.AUTOMATIC).sanitized()
                 baseline = draft
                 saved = stored?.enabled == true
+                stemMode = if (draft.separateVocals) LocalStemAudition.VOCAL_OVER_RHYTHM else null
                 loaded = true
             }
         }
@@ -212,8 +213,7 @@ fun PlaylistTransitionEditor(playlistId: String, songs: List<Song>, onDismiss: (
                         else scope.launch {
                             previewStarting = true
                             previewFailed = false
-                            try { previewFailed = controller?.studioPlay(owner, outgoing, incoming, draft,
-                                stemMode ?: if (draft.separateVocals) LocalStemAudition.VOCAL_OVER_RHYTHM else null) != true }
+                            try { previewFailed = controller?.studioPlay(owner, outgoing, incoming, draft, stemMode) != true }
                             catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
                             catch (_: Exception) { previewFailed = true }
                             finally { previewStarting = false }

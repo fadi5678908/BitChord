@@ -34,6 +34,17 @@ class LocalStemReconstructionTest {
                 durationText = "0:04", localUri = file.toURI().toString()) }
             val draft = com.music.bitchord.playback.smart.PlaylistTransitionDraft(overlapSeconds=2f,
                 outgoingStartSeconds=1f,incomingStartSeconds=.5f,enabled=true)
+            // The same prepared pair feeds saved playback, not only a rendered audition WAV.
+            val pair = studio.prepare(songs[0], songs[1], draft, { false })
+            val port = com.music.bitchord.playback.audio.LocalStemPort()
+            port.arm(com.music.bitchord.playback.audio.LocalStemPort.Window("out", 0.0, 1.0, 2.0, true, pair.out))
+            val block = com.music.bitchord.playback.audio.AudioBlock().apply { setFrameCount(8) }
+            port.process(block, 2_000_000, 44100)
+            for (c in 0..1) assertEquals(pair.out.instrument(88200, c), block.samples[c], .00001f)
+            port.arm(com.music.bitchord.playback.audio.LocalStemPort.Window("in", .5, .5, 2.0, false, pair.inn))
+            port.process(block, 900_000, 44100)
+            for (c in 0..1) assertEquals(pair.inn.vocal[17640*2+c], block.samples[c], .00001f)
+            port.clear()
             for(mode in com.music.bitchord.playback.smart.LocalStemAudition.entries) {
                 val (wave, lead) = studio.render(songs[0],songs[1],draft,mode,{false},{})
                 assertEquals(1f,lead)

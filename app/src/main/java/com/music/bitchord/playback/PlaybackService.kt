@@ -2095,9 +2095,11 @@ class PlaybackService : MediaLibraryService() {
 
     private var playlistStemJob: Job? = null
     private var playlistStemKey: List<Any>? = null
+    private var playlistStemStatus: String? = null
 
     private fun clearPlaylistStems() {
         playlistStemKey = null
+        playlistStemStatus = null
         playlistStemJob?.cancel()
         playlistStemJob = null
         transitionFilterA.localStems.clear()
@@ -2124,12 +2126,15 @@ class PlaybackService : MediaLibraryService() {
         playlistStemKey = key
         if (!com.music.bitchord.playback.smart.LocalAudioSource.isLocal(outUri) ||
             !com.music.bitchord.playback.smart.LocalAudioSource.isLocal(inUri)) {
+            playlistStemStatus = "original audio: local/downloaded files required"
             Log.i("BitChordLocalStems", "Playlist fallback: local/downloaded sources required")
             return
         }
         val exo = player ?: return
         // A sink may already have queued its future PCM. Never swap half an overlap.
-        if (exo.currentPosition / 1000.0 >= plan.transitionStart - 2.0) return
+        fun tooLate() = exo.currentPosition / 1000.0 >= plan.transitionStart - maxOf(5.0, activeFilter.leadUs / 1e6 + 1.0)
+        if (tooLate()) { playlistStemStatus = "original audio: preparation too late"; return }
+        playlistStemStatus = "preparing local vocals"
         val outPort = activeFilter.localStems
         val inPort = spareFilter.localStems
         val timing = draft.copy(mode = com.music.bitchord.playback.smart.PlaylistTransitionMode.CUSTOM,
@@ -2149,14 +2154,20 @@ class PlaybackService : MediaLibraryService() {
                 }
                 if (!isActive || playlistStemKey != key || player !== exo ||
                     exo.currentMediaItem?.mediaId != out.mediaId ||
-                    exo.currentPosition / 1000.0 >= plan.transitionStart - 2.0) return@launch
+                    CastController.state.value.casting || ListenTogether.state.value.inParty ||
+                    BitPerfectOutput.status.value.active || SleepTimer.afterTrack.value) return@launch
+                if (tooLate()) { playlistStemStatus = "original audio: preparation too late"; return@launch }
                 outPort.arm(com.music.bitchord.playback.audio.LocalStemPort.Window(out.mediaId,
                     plan.transitionStart - prepared.lead, plan.transitionStart, plan.fadeSeconds, true, prepared.out))
                 inPort.arm(com.music.bitchord.playback.audio.LocalStemPort.Window(inn.mediaId,
                     plan.incomingCueTime, plan.incomingCueTime, plan.fadeSeconds, false, prepared.inn))
+                playlistStemStatus = "local vocals + accompaniment ready"
                 Log.i("BitChordLocalStems", "Playlist vocal/instrument windows ready")
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { Log.w("BitChordLocalStems", "Playlist fallback: separation unavailable", error) }
+            catch (error: Exception) {
+                if (playlistStemKey == key) playlistStemStatus = "original audio: separation unavailable"
+                Log.w("BitChordLocalStems", "Playlist fallback: separation unavailable", error)
+            }
         }
     }
 
@@ -2187,6 +2198,7 @@ class PlaybackService : MediaLibraryService() {
             },
             onPlaylistPlanInvalidated = ::clearPlaylistStems,
             onPlaylistPlan = ::preparePlaylistStems,
+            playlistStemDetail = { playlistStemStatus },
             requestAnalysis = { item, durationMs ->
                 item.localConfiguration?.uri?.let { uri ->
                     trackAnalyzer.request(item.mediaId, uri, durationMs / 1000.0)
@@ -2238,7 +2250,7 @@ class PlaybackService : MediaLibraryService() {
                     }
                 }
             },
-            versionSwapActive = { versionSwapJob?.isActive == true },
+            versionSwapActive = { versionSwapJob?.isActive == true || castPlayback.active || CastController.state.value.casting },
             // Direct Source Stream fetches the next track only in the last
             // seconds before the blend, so the marker waits for its audio:
             // a window shown over a track that may still fall back to YouTube

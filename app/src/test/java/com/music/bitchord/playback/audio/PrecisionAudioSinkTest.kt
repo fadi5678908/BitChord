@@ -1313,4 +1313,27 @@ class PrecisionAudioSinkTest {
         assertEquals(PcmEncoding.PCM_16BIT, sink.targetOutputEncoding)
         assertEquals(C.ENCODING_PCM_16BIT, fakeDelegate.configuredConfig?.format?.pcmEncoding)
     }
+    @Test
+    fun `prepared playlist vocals reach the actual PCM sink using track time`() {
+        val delegate = FakeAudioSink()
+        val chain = idleDspChain()
+        val sink = createSink(delegate, enableFloatOutput = false, dspChain = chain)
+        sink.configure(AudioSink.AudioSinkConfig.Builder(rawFormat(C.ENCODING_PCM_16BIT)).build())
+        val separated = com.music.bitchord.playback.smart.VocalTracker.Separated(
+            FloatArray(88201) { .7f }, FloatArray(88201) { .5f },
+            FloatArray(176402) { if (it % 2 == 0) .2f else .1f })
+        chain.transition.localStems.arm(LocalStemPort.Window("incoming", 0.0, 0.0, 2.0, false, separated))
+        // Renderer timestamps include the stream offset; stem windows do not.
+        sink.setOutputStreamOffsetUs(5_000_000)
+        val input = ByteBuffer.allocate(32).order(ByteOrder.nativeOrder())
+        repeat(16) { input.putShort(0) }; input.flip()
+        assertTrue(sink.handleBuffer(input, 5_400_000, 1))
+        val output = delegate.lastHandledBuffer!!.duplicate().order(ByteOrder.nativeOrder()).apply { rewind() }
+        assertTrue(kotlin.math.abs((.2f * 32768).toInt() - output.short.toInt()) <= 1)
+        assertTrue(kotlin.math.abs((.1f * 32768).toInt() - output.short.toInt()) <= 1)
+        assertTrue(chain.transition.localStems.processed)
+        sink.flush()
+        assertNull(chain.transition.localStems.window)
+    }
+
 }

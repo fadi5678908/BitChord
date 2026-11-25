@@ -10,7 +10,7 @@ import java.io.FileOutputStream
 import java.util.UUID
 import kotlin.math.roundToInt
 
-/** One local playlist-pair audition in memory. No remote processing or source substitution. */
+/** One bounded local playlist pair, shared by saved playback and audition rendering. */
 internal class LocalStemStudio(private val context: Context, private val analyzer: TrackAnalyzer) {
     internal data class Key(val outUri: String, val inUri: String, val out: Double, val inn: Double, val overlap: Double)
     internal data class Prepared(val key: Key, val out: VocalTracker.Separated, val inn: VocalTracker.Separated, val lead: Double)

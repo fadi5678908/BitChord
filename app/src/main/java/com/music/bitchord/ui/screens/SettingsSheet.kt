@@ -771,11 +771,14 @@ fun SettingsScreen(
                             icon = SfIcons.Waves,
                             title = crossfadeTitle,
                             subtitle = stringResource(R.string.crossfade_subtitle),
-                            value = if (crossfade == 0) stringResource(R.string.off) else "${crossfade}s",
-                            sliderValue = crossfade.toFloat(),
-                            onSliderValue = { AppSettings.setCrossfadeSeconds(it.roundToInt()) },
-                            valueRange = 0f..12f,
-                            steps = 11,
+                            value = if (crossfade < 2) stringResource(R.string.off) else "${crossfade}s",
+                            sliderValue = (crossfade - 1).coerceAtLeast(0).toFloat(),
+                            onSliderValue = { value ->
+                                val step = value.roundToInt()
+                                AppSettings.setCrossfadeSeconds(if (step == 0) 0 else step + 1)
+                            },
+                            valueRange = 0f..11f,
+                            steps = 10,
                         )
                     }
                 }

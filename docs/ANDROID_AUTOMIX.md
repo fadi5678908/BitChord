@@ -1,5 +1,74 @@
 # Android Automix: listening-first transitions
 
+## Current Android direction: playlist modes replace global model-driven routing
+
+The user reported that the additions worked but **Automix still did not**. The
+new Android playback path therefore no longer calls `AutomixSessionPlanner.plan`,
+requests its beat/vocal analysis passes, or chooses loop transitions. Legacy
+shared algorithms/tests remain in source for now; the vocal reconstruction model
+is intentionally retained because it produces the actual vocals/accompaniment.
+The historical sections below describe earlier builds, not the current policy.
+
+- Queue provenance now distinguishes `PLAYLIST` from generic `BROWSE` (which also
+  means albums/folders). Detail and playlist-card playback stamp that explicit
+  type; bundle/metadata/persistence carry the enum name. **Reopen an old restored
+  playlist** after updating: old `BROWSE` queues fail closed rather than being
+  guessed into playlists. No transitions for albums, search, radio, shuffled
+  queues, cross-context pairs, video rows or ambiguous duplicate entries.
+- The playlist editor selects **Automatic / Custom / Crossfade**. New drafts
+  start Automatic; old v1 drafts retain Custom timings and enabled state. All
+  modes and the vocal switch persist on Apply and through UI state restoration.
+- Automatic works without model readiness: natural speed, six seconds by
+  default. Existing local evidence may adjust overlap to eight beats (4–8 s),
+  trim at most three seconds of trailing silence and enter at a bounded audible
+  opening. With actual cached vocal-model windows and separation enabled it can
+  choose an onset within the first 30 s. It does **not** promise automatic
+  lyrical-phrase discovery, fresh beat analysis or beatmatching.
+- Custom preserves exact selected entry/exit and master envelopes. Crossfade
+  ignores stale Custom cues/envelopes and overlaps the file end with the next
+  file opening. Real decoded durations must authorize either selected window.
+  Unknown incoming duration may authorize *prebuffering* for non-Custom modes,
+  never audible playback before the incoming decoder confirms the region.
+- Saved pair settings take precedence over global defaults, including an
+  explicitly disabled pair. Otherwise global Automix enables Automatic only in
+  playlists; the crossfade slider supplies a playlist-only Crossfade default.
+  All paths use the same two-player handoff and runtime safety checks.
+- The saved **vocals over accompaniment** switch now prepares a bounded local
+  pair in the background and supplies actual stereo source windows to the
+  physical players through `LocalStemPort` in `PrecisionAudioSink`, before the
+  spatial/EQ/filter/loudness chain. This is not a UI-only flag or vocal-score EQ.
+  The audio callback only interpolates prepared PCM by track timestamps; it
+  never decodes, loads a model or waits for inference. Master faders remain in
+  the existing two-deck engine, so source replacement does not double-fade.
+- Outgoing vocals leave during the first 35% of the overlap; incoming music
+  enters during the last 40%. Accompaniment remains mixture minus vocals,
+  **not independent drums/bass**. Actual sound quality still needs music/phone
+  listening tests. Choose a Custom incoming vocal cue for predictable placement.
+- Only one pair is prepared/cached. Both sources must be local/file-backed
+  downloads, preparation must finish before the outgoing sink has queued the
+  overlap (at least five seconds ahead), and severe thermal pressure refuses
+  preparation. Otherwise the original-audio transition plays on time. The
+  stats detail reports preparation, readiness, or original-audio fallback.
+  No server inference or whole-track separation is introduced.
+- Seek/skip, queue replacement, mode/context invalidation, late retiming and
+  teardown clear prepared ports/cancel work. Startup decoder flushes retain
+  unrendered windows; subsequent seeks/gapless boundaries discard rendered
+  windows. Party, Cast, bit-perfect and repeat-one gates apply during arming
+  and fades too. An ORT kernel already in progress is not force-interrupted.
+- The four audition monitors remain separate from saved settings. Rendered
+  auditions still replace the current queue and do not restore it. Original
+  preview uses the same two-deck controller. Original audio is never modified.
+
+Verification includes common policy/mode tests, Android PCM sink tests, native
+reconstruction regression, real bundled-model reconstruction, preference
+round-trip/legacy migration and a real two-ExoPlayer handoff in **all three modes
+with both global toggles off**, without analysis/model scheduling. Synthetic
+fixtures are not a guarantee of audible beat alignment, separator quality, or
+physical Pixel/Android 17 performance. Current run/release results are recorded
+below only after completion.
+
+---
+
 Android's `CrossfadeController` owns an `AutomixSessionPlanner`, which caches
 `planTransition(natural = true)` for one pair of analysis snapshots.
 This aims for unobtrusive, adaptive listening transitions, not a DJ effect on

@@ -46,6 +46,7 @@ class PlaylistTransitionPlaybackTest {
                         var spare = ExoPlayer.Builder(context).build()
                         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
                         var handoffs = 0
+                        var analysisRequests = 0
                         var settled = false
                         val draft = PlaylistTransitionDraft(enabled = true, mode = mode, overlapSeconds = 3f,
                             outgoingStartSeconds = 5f, incomingStartSeconds = 1f)
@@ -63,6 +64,7 @@ class PlaylistTransitionPlaybackTest {
                             customTransitionFor = { out, into ->
                                 draft.takeIf { out.mediaId == "first" && into.mediaId == "second" }
                             },
+                            requestAnalysis = { _, _ -> analysisRequests++ },
                             onSettled = { settled = true })
                         try {
                             active.setMediaItems(songs.map { it.toMediaItem() }, 0, 3000)
@@ -71,6 +73,7 @@ class PlaylistTransitionPlaybackTest {
                             active.play()
                             withTimeout(25_000) { while (!settled) delay(50) }
                             assertEquals("Handoff for $mode", 1, handoffs)
+                            assertEquals("No retired model scheduling for $mode", 0, analysisRequests)
                             assertEquals("second", active.currentMediaItem?.mediaId)
                             assertEquals(1, active.currentMediaItemIndex)
                             assertEquals(3, active.mediaItemCount)
@@ -90,4 +93,32 @@ class PlaylistTransitionPlaybackTest {
             }
         } finally { file.delete() }
     }
+    @Test fun playlistModeAndStemSwitchPersistWithoutEnablingLegacyDrafts() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val store = com.music.bitchord.data.settings.PlaylistTransitionDraftStore.get(context)
+        val key = PlaylistTransitionKey("mode-roundtrip-fixture", "entry:a", "entry:b")
+        val prefs = context.getSharedPreferences("playlist_transition_drafts_v1", android.content.Context.MODE_PRIVATE)
+        val framed = listOf(key.playlistId, key.outgoingEntry, key.incomingEntry).joinToString("") { "${it.length}:$it" }
+        val diskKey = java.security.MessageDigest.getInstance("SHA-256").digest(framed.toByteArray())
+            .joinToString("") { "%02x".format(it.toInt() and 255) }
+        try {
+            for (mode in PlaylistTransitionMode.entries) {
+                val draft = PlaylistTransitionDraft(enabled = true, mode = mode, separateVocals = true).sanitized()
+                assertTrue(store.save(key, draft))
+                assertEquals(draft, store.read(key))
+                assertEquals(draft, store.snapshot(key))
+            }
+            // Same v1 preferences existed before mode/stem fields. Preserve their custom timings and disabled state.
+            assertTrue(store.save(key, PlaylistTransitionDraft(outgoingStartSeconds = 15f)))
+            val legacy = org.json.JSONObject(prefs.getString(diskKey, null)!!)
+            legacy.remove("mode"); legacy.remove("separateVocals")
+            assertTrue(prefs.edit().putString(diskKey, legacy.toString()).commit())
+            val restored = store.read(key)!!
+            assertEquals(PlaylistTransitionMode.CUSTOM, restored.mode)
+            assertEquals(15f, restored.outgoingStartSeconds)
+            assertFalse(restored.enabled)
+            assertFalse(restored.separateVocals)
+        } finally { prefs.edit().remove(diskKey).commit() }
+    }
+
 }
