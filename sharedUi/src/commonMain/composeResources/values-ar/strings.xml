@@ -5,4 +5,5 @@
     <string name="automix_transition_paused">الانتقال متوقف مؤقتًا</string>
     <string name="automix_transition_ended">انتهى الانتقال</string>
     <string name="automix_transition_percent">%1$d٪</string>
+    <string name="automix_custom_transition">انتقال مخصّص للقائمة</string>
 </resources>

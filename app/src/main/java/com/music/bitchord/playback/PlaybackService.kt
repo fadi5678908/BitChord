@@ -107,6 +107,9 @@ import com.music.bitchord.data.lyrics.EmbeddedLyrics
 import com.music.bitchord.data.lyrics.LyricLine
 import com.music.bitchord.data.lyrics.LyricsRepository
 import com.music.bitchord.data.model.NOTIFICATION_ART_PX
+import com.music.bitchord.data.settings.PlaylistTransitionDraftStore
+import com.music.bitchord.playback.smart.PlaylistTransitionKey
+import com.music.bitchord.playback.smart.playlistTransitionEntry
 import com.music.bitchord.data.model.PlaybackSourceType
 import com.music.bitchord.data.model.SearchFilter
 import com.music.bitchord.data.model.SearchResult
@@ -1916,12 +1919,31 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    private val playlistTransitions by lazy { PlaylistTransitionDraftStore.get(this) }
+
     private fun createCrossfadeController() = CrossfadeController(
             scope,
             active = { requireNotNull(player) },
             standby = { requireNotNull(spare) },
             onHandoff = ::adoptPlayer,
             analysisFor = { item -> trackAnalyzer.analysisFor(item.mediaId) },
+            customTransitionFor = custom@{ outItem, inItem ->
+                val out = outItem.toSong()
+                val inn = inItem.toSong()
+                val source = out.playbackSourceId?.takeIf { it.isNotBlank() } ?: return@custom null
+                if (QueueShuffle.enabled.value || player?.shuffleModeEnabled == true || out.playbackSourceType != PlaybackSourceType.BROWSE ||
+                    inn.playbackSourceType != PlaybackSourceType.BROWSE || inn.playbackSourceId != source ||
+                    out.queueTier != QueueTier.CONTEXT || inn.queueTier != QueueTier.CONTEXT ||
+                    out.radioName != null || inn.radioName != null) return@custom null
+                val key = PlaylistTransitionKey(source, playlistTransitionEntry(out.videoId, out.setVideoId), playlistTransitionEntry(inn.videoId, inn.setVideoId))
+                val profile = playlistTransitions.active(key) ?: return@custom null
+                // Without stable playlist entry IDs, duplicate tracks are ambiguous. Fail closed.
+                val queue = player ?: return@custom null
+                for (song in listOf(out, inn).filter { it.setVideoId.isNullOrBlank() }) {
+                    if ((0 until queue.mediaItemCount).count { queue.getMediaItemAt(it).mediaId == song.videoId } > 1) return@custom null
+                }
+                profile
+            },
             requestAnalysis = { item, durationMs ->
                 item.localConfiguration?.uri?.let { uri ->
                     trackAnalyzer.request(item.mediaId, uri, durationMs / 1000.0)

@@ -7,10 +7,28 @@ import com.music.bitchord.playback.smart.StemHandoff
 import com.music.bitchord.playback.smart.TransitionStem
 import org.json.JSONObject
 import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.*
 
-/** Private, device-local drafts. No playback overrides and no audio processing are scheduled here. */
-class PlaylistTransitionDraftStore(context: Context) {
+/** Device-local playlist timing. Playback reads an in-memory snapshot, never preferences on each tick. */
+class PlaylistTransitionDraftStore private constructor(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("playlist_transition_drafts_v1", Context.MODE_PRIVATE)
+
+    private val snapshots = ConcurrentHashMap<PlaylistTransitionKey, PlaylistTransitionDraft>()
+
+    init {
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            prefs.all.values.filterIsInstance<String>().forEach { encoded ->
+                runCatching {
+                    val root = JSONObject(encoded)
+                    val key = PlaylistTransitionKey(root.getString("playlist"), root.getString("outgoing"), root.getString("incoming"))
+                    read(key)?.let { snapshots.putIfAbsent(key, it) }
+                }
+            }
+        }
+    }
+
+    fun active(key: PlaylistTransitionKey): PlaylistTransitionDraft? = snapshots[key]?.takeIf { it.enabled }
 
     fun read(key: PlaylistTransitionKey): PlaylistTransitionDraft? {
         if (!key.isValid) return null
@@ -26,6 +44,9 @@ class PlaylistTransitionDraftStore(context: Context) {
                 overlapSeconds = root.getDouble("overlap").toFloat(),
                 outgoingTrimSeconds = root.getDouble("trim").toFloat(),
                 incomingCueSeconds = root.getDouble("cue").toFloat(),
+                enabled = root.optBoolean("enabled", false),
+                outgoingStartSeconds = if (root.has("outStart")) root.getDouble("outStart").toFloat() else null,
+                incomingStartSeconds = if (root.has("inStart")) root.getDouble("inStart").toFloat() else null,
                 stems = TransitionStem.entries.associateWith { stem ->
                     val layer = layers.getJSONObject(stem.name)
                     StemHandoff(layer.getDouble("until").toFloat(), layer.getDouble("from").toFloat())
@@ -43,11 +64,24 @@ class PlaylistTransitionDraftStore(context: Context) {
             val handoff = d.handoff(stem)
             layers.put(stem.name, JSONObject().put("until", handoff.outgoingUntil).put("from", handoff.incomingFrom))
         }
-        val encoded = JSONObject().put("version", 1).put("playlist", key.playlistId)
+        val encoded = JSONObject().put("enabled", d.enabled)
+            .apply {
+                d.outgoingStartSeconds?.let { put("outStart", it) }
+                d.incomingStartSeconds?.let { put("inStart", it) }
+            }.put("version", 1).put("playlist", key.playlistId)
             .put("outgoing", key.outgoingEntry).put("incoming", key.incomingEntry)
             .put("overlap", d.overlapSeconds).put("trim", d.outgoingTrimSeconds)
             .put("cue", d.incomingCueSeconds).put("stems", layers).toString()
-        return prefs.edit().putString(storageKey(key), encoded).commit()
+        val saved = prefs.edit().putString(storageKey(key), encoded).commit()
+        if (saved) snapshots[key] = d
+        return saved
+    }
+
+    companion object {
+        @Volatile private var instance: PlaylistTransitionDraftStore? = null
+        fun get(context: Context): PlaylistTransitionDraftStore = instance ?: synchronized(this) {
+            instance ?: PlaylistTransitionDraftStore(context.applicationContext).also { instance = it }
+        }
     }
 
     private fun storageKey(key: PlaylistTransitionKey): String {

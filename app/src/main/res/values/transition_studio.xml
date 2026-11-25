@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="transition_studio">Transition studio</string>
-    <string name="transition_studio_entry">Customize transitions · Draft editor</string>
+    <string name="transition_studio">Mix transition</string>
+    <string name="transition_studio_entry">Customize transitions</string>
     <string name="transition_close">Close</string>
     <string name="transition_draft_badge">LOCAL DRAFT · NOT APPLIED TO PLAYBACK</string>
     <string name="transition_model_notice">Design a handoff for this playlist only. On-device stem separation is not available in this build. These controls save a design; they do not separate or change the audio. No audio is uploaded.</string>
@@ -36,4 +36,14 @@
     <string name="transition_drums">Drums</string>
     <string name="transition_bass">Bass</string>
     <string name="transition_other">Instruments</string>
+    <string name="transition_enable">Use this transition</string>
+    <string name="transition_scope">This pair, in this playlist only</string>
+    <string name="transition_exit_point">Start outgoing handoff at</string>
+    <string name="transition_entry_point">Start incoming song at</string>
+    <string name="transition_timing_help">The highlighted section is the overlap. Apply to hear these timings at normal speed, even with Automix off. Only the saved pair in normal playlist order is affected; shuffle and radio are excluded. This does not separate vocals or instruments.</string>
+    <string name="transition_invalid_timing">Full track durations and unique playlist entries are required. Keep both highlighted sections inside their tracks.</string>
+    <string name="transition_applied">Saved. Enabled timings will be used for this playlist pair.</string>
+    <string name="transition_apply">Apply &amp; save</string>
+    <string name="transition_play_pair">Play from the outgoing song</string>
+    <string name="transition_second_unit">s</string>
 </resources>

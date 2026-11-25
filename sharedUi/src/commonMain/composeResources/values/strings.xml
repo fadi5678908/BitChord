@@ -282,4 +282,5 @@
     <string name="automix_transition_paused">Transition paused</string>
     <string name="automix_transition_ended">Transition ended</string>
     <string name="automix_transition_percent">%1$d%</string>
+    <string name="automix_custom_transition">Custom playlist transition</string>
 </resources>

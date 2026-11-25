@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -54,7 +56,7 @@ import org.jetbrains.compose.resources.stringResource
  * Expensive state is read in draw/layer scopes, not by the whole player composition.
  */
 @Composable
-internal fun AutomixHandoffHero(view: MixTransitionView, progress: State<Float>, live: Boolean) {
+internal fun AutomixHandoffHero(view: MixTransitionView, progress: State<Float>, live: Boolean, expandedArtwork: Boolean = false) {
     val reduced by PlayerSettings.reduceAnimation.collectAsStateWithLifecycle()
     val blend = PlayerSettings.smartMixBlend.collectAsStateWithLifecycle()
     val playing by remember { derivedStateOf { blend.value?.playing == true } }
@@ -73,6 +75,7 @@ internal fun AutomixHandoffHero(view: MixTransitionView, progress: State<Float>,
     val stateLabel = stringResource(when {
         !live -> Res.string.automix_transition_ended
         !playing -> Res.string.automix_transition_paused
+        view.customTiming -> Res.string.automix_custom_transition
         view.beatMatched -> Res.string.automix_beat_matched
         else -> Res.string.automix_smooth_transition
     })
@@ -81,12 +84,14 @@ internal fun AutomixHandoffHero(view: MixTransitionView, progress: State<Float>,
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
-            Text("AUTOMIX", color = Color.White.copy(alpha = 0.9f), fontSize = 11.sp,
+            Text(if (view.customTiming) "MIX" else "AUTOMIX", color = Color.White.copy(alpha = 0.9f), fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold, letterSpacing = 2.sp)
             Spacer(Modifier.width(8.dp))
             HandoffPercent(frame)
         }
-        Box(Modifier.fillMaxWidth().height(108.dp), contentAlignment = Alignment.Center) {
+        val artSize = if (expandedArtwork) 128.dp else 76.dp
+        val spread = if (expandedArtwork) 52f else 30f
+        Box(Modifier.fillMaxWidth().height(if (expandedArtwork) 186.dp else 108.dp), contentAlignment = Alignment.Center) {
             Canvas(Modifier.matchParentSize().clearAndSetSemantics {}) {
                 val pose = frame.value
                 val left = Offset(size.width * 0.33f, size.height * 0.5f)
@@ -111,9 +116,9 @@ internal fun AutomixHandoffHero(view: MixTransitionView, progress: State<Float>,
                 model = view.outgoing.artworkUrl,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.size(76.dp).graphicsLayer {
+                modifier = Modifier.size(artSize).graphicsLayer {
                     val pose = frame.value
-                    translationX = (if (reduced) -30f else -30f - 12f * pose.progress).dp.toPx()
+                    translationX = (if (reduced) -spread else -spread - 12f * pose.progress).dp.toPx()
                     rotationZ = if (reduced) 0f else -6f * pose.progress
                     val scale = if (reduced) 1f else 1f - 0.12f * pose.progress
                     scaleX = scale
@@ -125,9 +130,9 @@ internal fun AutomixHandoffHero(view: MixTransitionView, progress: State<Float>,
                 model = view.incoming.artworkUrl,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.size(76.dp).graphicsLayer {
+                modifier = Modifier.size(artSize).graphicsLayer {
                     val pose = frame.value
-                    translationX = (if (reduced) 30f else 30f * (1f - pose.progress)).dp.toPx()
+                    translationX = (if (reduced) spread else spread * (1f - pose.progress)).dp.toPx()
                     rotationZ = if (reduced) 0f else 6f * (1f - pose.progress)
                     val scale = if (reduced) 1f else 0.86f + 0.14f * pose.progress + 0.006f * pulse.alpha(1f)
                     scaleX = scale
@@ -163,5 +168,23 @@ internal fun AutomixHandoffMark(pulse: MixPulse, modifier: Modifier = Modifier) 
         drawCircle(Color.White.copy(alpha = (1f - p * 0.65f) * pulse.alpha(0.9f)), radius, left)
         drawCircle(Color.White.copy(alpha = (0.35f + p * 0.65f) * pulse.alpha(0.9f)), radius, right)
         drawCircle(Color.White, 1.5.dp.toPx(), Offset(left.x + (right.x - left.x) * p, left.y))
+    }
+}
+
+
+/** Mounted directly over the player artwork. Appears automatically for a real audible overlap. */
+@Composable
+internal fun AutomixInlineHandoff(modifier: Modifier = Modifier) {
+    val active by PlayerSettings.smartMixInProgress.collectAsStateWithLifecycle()
+    val view by PlayerSettings.smartMixView.collectAsStateWithLifecycle()
+    val progress = PlayerSettings.smartMixProgress.collectAsStateWithLifecycle()
+    val shown = view ?: return
+    if (!active) return
+    Box(modifier.clip(RoundedCornerShape(22.dp)).background(Color.Black.copy(alpha = 0.72f)), contentAlignment = Alignment.Center) {
+        Column(Modifier.fillMaxWidth().padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            AutomixHandoffHero(shown, progress, live = true, expandedArtwork = true)
+            Text(shown.outgoing.title, color = Color.White.copy(alpha = 0.65f), fontSize = 11.sp, maxLines = 1)
+            Text(shown.incoming.title, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        }
     }
 }

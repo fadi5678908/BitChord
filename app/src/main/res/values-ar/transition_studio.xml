@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="transition_studio">استوديو الانتقالات</string>
-    <string name="transition_studio_entry">تخصيص الانتقالات · محرّر المسودات</string>
+    <string name="transition_studio">تخصيص الانتقال</string>
+    <string name="transition_studio_entry">تخصيص الانتقالات</string>
     <string name="transition_close">إغلاق</string>
     <string name="transition_draft_badge">مسودة محلية · لا تُطبَّق على التشغيل</string>
     <string name="transition_model_notice">صمّم انتقالًا لهذه القائمة فقط. فصل الغناء والآلات على الهاتف غير متاح في هذا الإصدار. تحفظ هذه الأدوات تصميمًا فقط، ولا تفصل الصوت أو تغيّره. لا يُرفع أي صوت.</string>
@@ -36,4 +36,14 @@
     <string name="transition_drums">الطبول</string>
     <string name="transition_bass">الجهير</string>
     <string name="transition_other">بقية الآلات</string>
+    <string name="transition_enable">استخدام هذا الانتقال</string>
+    <string name="transition_scope">لهذا الزوج داخل هذه القائمة فقط</string>
+    <string name="transition_exit_point">بدء خروج الأغنية عند</string>
+    <string name="transition_entry_point">دخول الأغنية التالية عند</string>
+    <string name="transition_timing_help">المقطع الملوّن هو التداخل. اضغط تطبيق لسماع التوقيت بالسرعة الأصلية حتى مع إيقاف Automix. يُطبَّق على الزوج المحفوظ بترتيب القائمة فقط، وليس الخلط أو الراديو. لا يفصل هذا الغناء أو الآلات.</string>
+    <string name="transition_invalid_timing">يلزم توفر مدة الأغنيتين وعدم التباس الإدخالات المكررة. اجعل المقطعين الملوّنين داخل مدتي الأغنيتين.</string>
+    <string name="transition_applied">تم الحفظ. سيُستخدم التوقيت المفعّل لهذا الزوج داخل القائمة.</string>
+    <string name="transition_apply">تطبيق وحفظ</string>
+    <string name="transition_play_pair">تشغيل من الأغنية الأولى</string>
+    <string name="transition_second_unit">ث</string>
 </resources>

@@ -34,7 +34,10 @@ import com.music.bitchord.playback.smart.TransitionTrackInfo
 import com.music.bitchord.playback.smart.echoTailSeconds
 import com.music.bitchord.playback.smart.forPlaybackStart
 import com.music.bitchord.playback.smart.routingReason
+import com.music.bitchord.playback.smart.PlaylistTransitionDraft
+import com.music.bitchord.playback.smart.playbackPlan
 import com.music.bitchord.playback.smart.AutomixSessionPlanner
+import com.music.bitchord.playback.smart.AutomixPlanDiagnostics
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -152,6 +155,7 @@ class CrossfadeController(
      * them, and this class is the only place that already knows it.
      */
     private val requestAnalysis: (MediaItem, Long) -> Unit = { _, _ -> },
+    private val customTransitionFor: (MediaItem, MediaItem) -> PlaylistTransitionDraft? = { _, _ -> null },
     /**
      * The low-pass and high-pass riding each side of a transition. This is what
      * makes a plan's
@@ -680,10 +684,14 @@ class CrossfadeController(
             // The listener moving the playhead is something no half-finished
             // crossfade should survive. Nothing this class does registers here
             // any more: the handoff is a role swap, not a seek.
-            if (reason == Player.DISCONTINUITY_REASON_SEEK) bail()
+            if (reason == Player.DISCONTINUITY_REASON_SEEK) {
+                clearPlanDiagnostics()
+                bail()
+            }
         }
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            clearPlanDiagnostics()
             when (reason) {
                 // Something replaced the queue out from under the fade — a new
                 // album, a new search result — so the tail still playing is a
@@ -903,7 +911,10 @@ class CrossfadeController(
      * playing is left for the playing path to decide.
      */
     private fun refreshMarkerWhilePaused(player: ExoPlayer) {
-        if (!AppSettings.smartFadeEnabled.value) return
+        val current = player.currentMediaItem ?: return
+        val nextIndex = player.nextMediaItemIndex
+        val custom = if (nextIndex != C.INDEX_UNSET) customTransitionFor(current, player.getMediaItemAt(nextIndex)) else null
+        if (!AppSettings.smartFadeEnabled.value && custom == null) return
         val now = SystemClock.elapsedRealtime()
         if (now - pausedMarkerAt < PAUSED_MARKER_STEP_MS) return
         pausedMarkerAt = now
@@ -917,7 +928,7 @@ class CrossfadeController(
             ?: queuedDurationMs(item).takeIf { it > 0L }
             ?: (analysisFor(item).duration * 1000).roundToLong().takeIf { it > 0L }
             ?: return
-        considerSmartTransition(duration, markerOnly = true)
+        considerSmartTransition(duration, markerOnly = true, custom = custom)
     }
 
     private var pausedMarkerAt = 0L
@@ -1010,8 +1021,11 @@ class CrossfadeController(
         // length: it decides its own duration from each pair of tracks (beats,
         // tempo, structure), so requiring a nonzero [AppSettings.crossfadeSeconds]
         // first would tie an automatic feature to a manual one it doesn't use.
-        if (AppSettings.smartFadeEnabled.value) {
-            considerSmartTransition(duration)
+        val custom = player.currentMediaItem?.let { current ->
+            customTransitionFor(current, player.getMediaItemAt(player.nextMediaItemIndex))
+        }
+        if (AppSettings.smartFadeEnabled.value || custom != null) {
+            considerSmartTransition(duration, custom = custom)
             return
         }
 
@@ -1054,7 +1068,7 @@ class CrossfadeController(
      * which [rideFilters] turns into a filter ride or a bass swap over the same
      * equal-power gain curve.
      */
-    private fun considerSmartTransition(duration: Long, markerOnly: Boolean = false) {
+    private fun considerSmartTransition(duration: Long, markerOnly: Boolean = false, custom: PlaylistTransitionDraft? = null) {
         val player = active()
         val currentItem = player.currentMediaItem ?: return
         val nextIndex = player.nextMediaItemIndex
@@ -1072,7 +1086,7 @@ class CrossfadeController(
 
         // Even for the marker alone: a stored analysis is only loaded off disk
         // by asking for it, and without that a paused track plans blind.
-        requestAnalysisAround(player, duration)
+        if (custom == null) requestAnalysisAround(player, duration)
 
         // Automix owns its timing, including the fallback. The manual crossfade
         // slider is hidden while it is on, so a stale slider value must not
@@ -1086,7 +1100,10 @@ class CrossfadeController(
         // The DJ planner is Automix now; there is no separate mode switch.
         val advanced = true
 
-        val plan = automixPlanner.plan(
+        val plan = if (custom != null) {
+            custom.playbackPlan(duration / 1000.0, nextDuration / 1000.0, player.currentPosition / 1000.0)
+                ?: run { clearPlanDiagnostics(); return }
+        } else automixPlanner.plan(
             outgoing = currentAnalysis,
             incoming = nextAnalysis,
             current = currentItem.toTransitionInfo(duration),
@@ -1113,11 +1130,10 @@ class CrossfadeController(
             )
         }
 
-        lastSmartPlan = plan
-        lastSmartPlanStartMs = (plan.transitionStart * 1000).roundToLong()
+        planDiagnostics.remember(planPair(currentItem, nextItem), plan)
 
         // The loop mix first: a pair it can do never reaches the blend below.
-        val loop = loopPlanFor(
+        val loop = if (custom != null) null else loopPlanFor(
             player, currentItem, nextItem, currentAnalysis, nextAnalysis, duration, nextDuration, analysisState,
         )
         if (loop != null && nextStreamReady(nextItem)) {
@@ -1161,13 +1177,9 @@ class CrossfadeController(
         // window that was already correct. Since the incoming track is now
         // routinely analysed from its opening long before it plays, that was
         // most of the time the marker was missing.
-        val markable = !plan.blocked &&
-            plan.markerVisible &&
-            duration > 0L &&
-            analysisState.current == TrackAnalysisState.ANALYSED &&
-            analysisState.next in MEASURED_ENOUGH_TO_ENTER_ON &&
-            // Last, because it is the only one that can read the cache.
-            nextStreamReady(nextItem)
+        val markable = !plan.blocked && plan.markerVisible && duration > 0L &&
+            (custom != null || (analysisState.current == TrackAnalysisState.ANALYSED &&
+                analysisState.next in MEASURED_ENOUGH_TO_ENTER_ON && nextStreamReady(nextItem)))
         val markerVerdict = when {
             markable -> "shown"
             plan.blocked -> "hidden: plan blocked (${plan.reason})"
@@ -1649,7 +1661,6 @@ class CrossfadeController(
                 render = Render(vocalOverlap = adjusted.vocalOverlap, advanced = true)
                 filters.open()
                 planInFlight = adjusted
-                lastSmartPlan = adjusted
                 Log.d(TAG, "Automix start fallback: ${adjusted.routingReason} at=${out.currentPosition}ms")
             }
         }
@@ -1860,7 +1871,9 @@ class CrossfadeController(
         // setting that actually started it — a Automix normally runs with
         // [configuredFadeMs] at zero, and reading that as "turned off" would
         // end every Automix on its first tick.
-        val settingSwitchedOff = if (smartFadeActive) {
+        val settingSwitchedOff = if (planInFlight?.policyReasons?.contains("playlist-custom-timing") == true) {
+            !customTimingStillEnabled()
+        } else if (smartFadeActive) {
             !AppSettings.smartFadeEnabled.value
         } else {
             configuredFadeMs() <= 0L
@@ -2098,6 +2111,7 @@ class CrossfadeController(
             beats = beats,
             beatMarks = marks,
             beatMatched = render.style == TransitionStyle.DJ_BLEND,
+            customTiming = "playlist-custom-timing" in plan.policyReasons,
             fadeOut = fadeOut,
             fadeIn = fadeIn,
             bassSwapAt = when {
@@ -2681,8 +2695,16 @@ class CrossfadeController(
 
     // ---- Stats for nerds ----------------------------------------------------
 
-    private var lastSmartPlan: TransitionPlan? = null
-    private var lastSmartPlanStartMs = 0L
+    private val planDiagnostics = AutomixPlanDiagnostics()
+
+    private fun planPair(current: MediaItem, next: MediaItem) =
+        (current.queueEntryId ?: current.mediaId) to (next.queueEntryId ?: next.mediaId)
+
+    private fun clearPlanDiagnostics() {
+        planDiagnostics.clear()
+        AppSettings.automixDetail.value = null
+        AppSettings.smartTransitionWindow.value = null
+    }
 
     /**
      * The detailed Automix line under the stream stats: both songs' analysis
@@ -2721,16 +2743,19 @@ class CrossfadeController(
         }
         // Show the route even without the marker: a head-only next track intentionally
         // cannot authorize the outgoing marker, but its fallback still needs a visible reason.
-        val plan = planInFlight.takeIf { smartFadeActive } ?: lastSmartPlan
+        if (player.duration == C.TIME_UNSET || player.duration <= 0L) return "Automix · waiting for audio"
+        val inFlight = smartFadeActive && phase != Phase.IDLE
+        val plan = if (inFlight) planInFlight else next?.let { planDiagnostics.forPair(planPair(item, it)) }
         if (plan != null && !plan.blocked && (next != null || smartFadeActive)) {
-            val inSeconds = ((lastSmartPlanStartMs - player.currentPosition) / 1000.0).coerceAtLeast(0.0)
+            val clock = if (inFlight) outgoing ?: player else player
+            val inSeconds = (plan.transitionStart - clock.currentPosition / 1000.0).coerceAtLeast(0.0)
             val whenText = if (inSeconds > 0) "in ${ceil(inSeconds).toInt()} s" else "now"
             val bars = if (plan.beatSeconds > 0) (plan.fadeSeconds / (4 * plan.beatSeconds)).roundToInt() else 0
             val length = if (bars > 0) "$bars bars" else "${"%.1f".format(Locale.ROOT, plan.fadeSeconds)} s"
             val why = " · ${plan.routingReason}"
             val noLoop = loopRefusal?.let { " · no loop: $it" }.orEmpty()
             return when (plan.transitionStyle) {
-                TransitionStyle.EQUAL_POWER -> "Automix · Crossfade (fallback) $whenText · ${"%.1f".format(Locale.ROOT, plan.fadeSeconds)} s$why$noLoop"
+                TransitionStyle.EQUAL_POWER -> if ("playlist-custom-timing" in plan.policyReasons) "Playlist mix · $whenText · $length" else "Automix · Crossfade (fallback) $whenText · ${"%.1f".format(Locale.ROOT, plan.fadeSeconds)} s$why$noLoop"
                 TransitionStyle.DJ_FILTER -> "Automix · filter mix $whenText · $length$why$noLoop"
                 else -> {
                     val rate = plan.incomingPlaybackRate
@@ -2802,6 +2827,9 @@ class CrossfadeController(
 
     private fun finish() {
         val wasTransitioning = phase != Phase.IDLE
+        planInFlight = null
+        smartFadeActive = false
+        clearPlanDiagnostics()
         if (phase != Phase.IDLE) {
             Log.d(TAG, "finish from $phase")
             // Stamped under this guard rather than beside the assignment at the
@@ -2871,8 +2899,16 @@ class CrossfadeController(
     }
 
     /** Still a next track, still playing, still switched on — by whichever setting armed this one. */
+    private fun customTimingStillEnabled(): Boolean {
+        val out = outgoing?.currentMediaItem ?: return false
+        val inn = incoming?.currentMediaItem ?: return false
+        return customTransitionFor(out, inn) != null
+    }
+
     private fun stillWorthFading(): Boolean {
-        val stillOn = if (smartFadeActive) AppSettings.smartFadeEnabled.value else configuredFadeMs() > 0L
+        val stillOn = if (smartFadeActive && planInFlight?.policyReasons?.contains("playlist-custom-timing") == true) {
+            customTimingStillEnabled()
+        } else if (smartFadeActive) AppSettings.smartFadeEnabled.value else configuredFadeMs() > 0L
         return stillOn && (outgoing ?: active()).hasNextMediaItem()
     }
 

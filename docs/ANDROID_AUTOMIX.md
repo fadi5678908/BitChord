@@ -317,3 +317,52 @@ not restore a stable debug signing key, so Android may reject an in-place
 update from a previous CI dev APK signed by a different generated key. Do not
 recommend uninstalling the user's dev app without preserving its data. The
 production app remains a different package.
+
+## Playlist timing activation and inline handoff (latest)
+
+Supersedes the draft-only editor stage above. The editor now exposes only the
+working controls: outgoing handoff START, incoming source START and overlap
+length (2–12 seconds). The highlighted timeline section spans the overlap;
+these are not fabricated audio waveforms. Positions can be chosen across both
+songs, with +/-1 second adjustments. The outgoing song is fully removed at
+outgoing start + overlap. This explicitly skips its remaining ending by user
+choice; the automatic planner retains its own intro/outro safety limits.
+
+Apply & save persists an enabled per-pair natural-speed equal-power transition.
+It does not claim beatmatching or stem separation. Legacy drafts remain disabled
+until explicitly enabled. Custom timing takes precedence over automatic planning
+and works even when global Automix is off. The editor offers playback from the
+outgoing song after saving, not a false rendered-preview button. Its playback
+button starts the playlist in normal order. Actual source duration is validated
+again by the playback controller; an unknown/invalid duration cannot schedule a
+custom mix. Late readiness can shorten the overlap but never pass its chosen
+end. Seeking beyond it does not restart the old transition.
+
+Runtime lookup requires matching BROWSE playlist source IDs, context queue tiers,
+ordered entry IDs, no radio provenance and no shuffle. Stable set-video IDs
+separate duplicate tracks. A unique-song fallback matches the original editor
+keys; ambiguous duplicates without stable entry IDs cannot be applied. The
+process-local store is shared by editor and playback; startup loading and commits
+run on IO, while playback reads an in-memory snapshot. Party, repeat-one, video
+and bit-perfect playback exclusions still take precedence.
+
+The reported stale `late-buffer` verdict had a lifecycle defect: finish did not
+clear `smartFadeActive` and `planInFlight`, so stats could reuse the previous
+transition against a new playhead. Finish now clears both and the published plan.
+Diagnostics are additionally scoped to ordered queue-entry IDs and cleared on
+seeks/media transitions. Until audio duration is available they show waiting,
+not the previous verdict. This fixes stale reporting, not an assertion that all
+buffering or automatic fallback cases are solved.
+
+The portrait and landscape artwork slots now mount a non-interactive automatic
+handoff overlay during an audible two-deck overlap. It shows both sleeves,
+actual fader-driven progress, and a custom/beatmatched/fallback distinction.
+No Mix tap or popup is required. Reduced-motion and paused-state behavior is
+inherited from the existing handoff component. It disappears with the real
+transition state rather than a timer. Other minimal player layouts are unchanged.
+
+`PlaylistCustomPlaybackTest` adds 12 cases for absolute entry/exit scheduling,
+disabled migration, full-source bounds, late/seek behavior, identity scoping,
+stale-diagnostic clearing, and preserving the custom renderer flag on waveform
+updates. All 118 isolated Kotlin tests passed. On-device listening, UI and
+retention tests still need the newly built APK; no new stem separator is present.

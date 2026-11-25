@@ -2072,6 +2072,9 @@ fun NowPlayingScreen(
                                     closeLyrics()
                                 },
                         ) {
+                            AutomixInlineHandoff(Modifier.matchParentSize().graphicsLayer {
+                                alpha = if (panelOpen) 0f else dockFade()
+                            })
                             // The stats belong to the player, not to the sleeve, so
                             // they leave it along with the rest of the player.
                             SleeveNerdStats(
@@ -3376,6 +3379,9 @@ fun NowPlayingScreen(
                                 ),
                             contentAlignment = Alignment.Center,
                         ) {
+                            AutomixInlineHandoff(Modifier.matchParentSize().graphicsLayer {
+                                alpha = ((1f - p() * 2f) * spotifyChromeAlpha).coerceIn(0f, 1f)
+                            })
                             // Measured stats stay on the sleeve's bottom centre. They
                             // fade away with Spotify's lower control deck rather than
                             // following the compact credits to the bottom edge.

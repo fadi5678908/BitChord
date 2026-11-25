@@ -4,7 +4,7 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** Editable designs only. These must not change playback until real separated audio is available. */
+/** Layer designs are reserved for a future separator; timing overrides can play at natural speed. */
 enum class TransitionStem { VOCALS, DRUMS, BASS, OTHER }
 
 /** Fractions of the overlap: finish fading out by [outgoingUntil], start fading in at [incomingFrom]. */
@@ -32,6 +32,9 @@ data class PlaylistTransitionDraft(
     val outgoingTrimSeconds: Float = 0f,
     val incomingCueSeconds: Float = 0f,
     val stems: Map<TransitionStem, StemHandoff> = emptyMap(),
+    val outgoingStartSeconds: Float? = null,
+    val incomingStartSeconds: Float? = null,
+    val enabled: Boolean = false,
 ) {
     fun handoff(stem: TransitionStem): StemHandoff = (stems[stem] ?: defaultHandoff(stem)).sanitized()
 
@@ -40,6 +43,8 @@ data class PlaylistTransitionDraft(
         outgoingTrimSeconds = outgoingTrimSeconds.safe(0f).coerceIn(0f, 6f),
         incomingCueSeconds = incomingCueSeconds.safe(0f).coerceIn(0f, 30f),
         stems = TransitionStem.entries.associateWith { handoff(it) },
+        outgoingStartSeconds = outgoingStartSeconds?.takeIf { it.isFinite() }?.coerceIn(0f, 86_400f),
+        incomingStartSeconds = incomingStartSeconds?.takeIf { it.isFinite() }?.coerceIn(0f, 86_400f),
     )
 
     fun withHandoff(stem: TransitionStem, handoff: StemHandoff) =
@@ -49,11 +54,11 @@ data class PlaylistTransitionDraft(
     fun windows(outgoingDuration: Double, incomingDuration: Double): TransitionSourceWindows? {
         if (!outgoingDuration.isFinite() || !incomingDuration.isFinite()) return null
         val d = sanitized()
-        val outEnd = outgoingDuration - d.outgoingTrimSeconds
-        val outStart = outEnd - d.overlapSeconds
-        val inStart = d.incomingCueSeconds.toDouble()
+        val outStart = d.outgoingStartSeconds?.toDouble() ?: (outgoingDuration - d.outgoingTrimSeconds - d.overlapSeconds)
+        val outEnd = outStart + d.overlapSeconds
+        val inStart = d.incomingStartSeconds?.toDouble() ?: d.incomingCueSeconds.toDouble()
         val inEnd = inStart + d.overlapSeconds
-        if (outStart < 0.0 || inEnd > incomingDuration || outgoingDuration <= 0.0 || incomingDuration <= 0.0) return null
+        if (outStart < 0.0 || outEnd > outgoingDuration + 0.001 || inEnd > incomingDuration + 0.001 || outgoingDuration <= 0.0 || incomingDuration <= 0.0) return null
         return TransitionSourceWindows(outStart, outEnd, inStart, inEnd)
     }
 
@@ -100,3 +105,26 @@ data class LocalPreparationConditions(
 }
 
 private fun Float.safe(fallback: Float): Float = if (isFinite()) this else fallback
+
+
+/** An explicit playlist timing override. Never claims beatmatching or implements stem controls. */
+fun PlaylistTransitionDraft.playbackPlan(outgoingDuration: Double, incomingDuration: Double, time: Double): TransitionPlan? {
+    if (!enabled) return null
+    val window = windows(outgoingDuration, incomingDuration) ?: return null
+    val base = TransitionPlan(
+        markerVisible = true,
+        transitionStart = window.outStart, transitionEnd = window.outEnd,
+        fadeSeconds = window.outEnd - window.outStart,
+        incomingCueTime = window.inStart, incomingHandoffTime = window.inEnd,
+        handoffDuration = window.outEnd - window.outStart,
+        transitionStyle = TransitionStyle.EQUAL_POWER,
+        policyReasons = listOf("playlist-custom-timing"), reason = "playlist-custom-transition",
+    )
+    val now = time.orZero().coerceAtLeast(0.0)
+    val adjusted = if (now > base.transitionStart + 0.15) base.forPlaybackStart(now) else base
+    return adjusted.copy(shouldStart = !adjusted.blocked && now >= adjusted.transitionStart)
+}
+
+/** Matches the original editor's unique-song fallback keys, without conflating stable playlist entries. */
+fun playlistTransitionEntry(trackId: String, entryId: String?): String =
+    entryId?.takeIf { it.isNotBlank() }?.let { "entry:$it" } ?: "song:${trackId.length}:$trackId:0"
