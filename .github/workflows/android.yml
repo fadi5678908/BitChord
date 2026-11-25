@@ -6,11 +6,21 @@ on:
   workflow_dispatch:
     inputs:
       universal_from_run:
-        description: 'Publish only the universal APK from a successful build on this branch (run ID); empty builds normally'
+        description: 'Extract an APK from a successful build on this branch (run ID); empty builds normally'
         required: false
         type: string
         default: ''
 
+      apk_abi:
+        description: 'APK architecture to extract from the verified build'
+        required: false
+        type: choice
+        default: universal
+        options:
+          - universal
+          - arm64-v8a
+          - armeabi-v7a
+          - x86_64
       verify_release:
         description: 'Verify an existing universal APK without rebuilding or replacing it (release tag)'
         required: false
@@ -45,11 +55,12 @@ jobs:
       actions: read
       contents: write
     steps:
-    - name: Extract the verified universal APK and publish a test download
+    - name: Extract a verified APK and publish a test download
       env:
         GH_TOKEN: ${{ github.token }}
         GH_REPO: ${{ github.repository }}
         RUN_ID: ${{ inputs.universal_from_run }}
+        APK_ABI: ${{ inputs.apk_abi || 'universal' }}
         EXPECTED_BRANCH: ${{ github.ref_name }}
       shell: bash
       run: |
@@ -67,19 +78,25 @@ jobs:
         PY
         SOURCE_SHA=$(python3 -c 'import json; print(json.load(open("run.json"))["head_sha"])')
         gh run download "$RUN_ID" --name bitchord-dev-debug --dir artifact
-        mapfile -t APKS < <(find artifact -type f -name '*universal*.apk')
-        [[ "${#APKS[@]}" -eq 1 ]] || { echo 'Expected exactly one universal APK'; exit 1; }
-        FILE=BitChord-Dev-Automix-universal.apk
+        case "$APK_ABI" in universal|arm64-v8a|armeabi-v7a|x86_64) ;; *) echo 'Unsupported APK ABI'; exit 1 ;; esac
+        mapfile -t APKS < <(find artifact -type f -name "*$APK_ABI*.apk")
+        [[ "${#APKS[@]}" -eq 1 ]] || { echo 'Expected exactly one APK for the selected ABI'; exit 1; }
+        FILE="BitChord-Dev-Automix-$APK_ABI.apk"
         cp "${APKS[0]}" "$FILE"
-        CHECKSUM=$(sha256sum "$FILE" | cut -d' ' -f1)
+        unzip -tq "$FILE"
+        SIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
+        "$SIGNER" verify --verbose --print-certs "$FILE"
+        sha256sum "$FILE" > "$FILE.sha256"
+        CHECKSUM=$(cut -d' ' -f1 "$FILE.sha256")
+        echo "::notice::Verified APK archive and Android signature: $FILE; SHA-256=$CHECKSUM"
         TAG="automix-test-${SOURCE_SHA:0:7}"
-        printf 'Test build from commit `%s`, extracted without rebuilding from Actions run %s.\n\nUniversal APK for BitChord Dev (separate from the normal app). Custom playlist timing is enabled; four-stem separation is not implemented.\n\nSHA-256: `%s`\n' "$SOURCE_SHA" "$RUN_ID" "$CHECKSUM" > notes.md
+        printf 'Test build from commit `%s`, extracted without rebuilding from Actions run %s.\n\nTest APK for BitChord Dev (separate from the normal app). Custom playlist timing is enabled; four-stem separation is not implemented.\n\nSHA-256: `%s`\n' "$SOURCE_SHA" "$RUN_ID" "$CHECKSUM" > notes.md
         if gh release view "$TAG" >/dev/null 2>&1; then
-          gh release upload "$TAG" "$FILE" --clobber
+          gh release upload "$TAG" "$FILE" "$FILE.sha256" --clobber
         else
-          gh release create "$TAG" "$FILE" --target "$SOURCE_SHA" --prerelease --latest=false --title 'BitChord Dev · Automix test · Universal' --notes-file notes.md
+          gh release create "$TAG" "$FILE" "$FILE.sha256" --target "$SOURCE_SHA" --prerelease --latest=false --title 'BitChord Dev · Automix test · Universal' --notes-file notes.md
         fi
-        echo "Universal APK: https://github.com/$GH_REPO/releases/download/$TAG/$FILE" >> "$GITHUB_STEP_SUMMARY"
+        echo "APK ($APK_ABI): https://github.com/$GH_REPO/releases/download/$TAG/$FILE" >> "$GITHUB_STEP_SUMMARY"
 
   build-dev-debug:
     if: github.event_name != 'workflow_dispatch' || (inputs.universal_from_run == '' && inputs.verify_release == '')
