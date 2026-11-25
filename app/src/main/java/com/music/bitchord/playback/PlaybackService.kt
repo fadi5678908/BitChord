@@ -1929,12 +1929,17 @@ class PlaybackService : MediaLibraryService() {
     private var studioPreviewJob: Job? = null
 
     private fun stopStudio(owner: String? = null) {
-        val preview = studioPreview ?: return
+        val preview = studioPreview ?: run {
+            if (owner == null || StudioTransport.state.value?.owner == owner) StudioTransport.state.value = null
+            return
+        }
         if (owner != null && preview.owner != owner) return
         studioPreviewJob?.cancel()
         studioPreviewJob = null
-        crossfade?.onSkipRequested()
-        player?.pause()
+        if (player?.currentMediaItem?.toSong()?.playbackSourceId == preview.source) {
+            crossfade?.onSkipRequested()
+            player?.pause()
+        }
         studioPreview = null
         StudioTransport.state.value = null
     }
@@ -1942,15 +1947,21 @@ class PlaybackService : MediaLibraryService() {
     /** Auditions the very same two-deck engine as normal playlist playback, not a separate demo mixer. */
     private fun playStudio(args: Bundle): Boolean {
         if (CastController.state.value.casting || castPlayback.active || ListenTogether.state.value.inParty ||
-            BitPerfectOutput.status.value.active || SleepTimer.afterTrack.value) return false
+            BitPerfectOutput.status.value.active || SleepTimer.afterTrack.value ||
+            versionSwapJob?.isActive == true || QualityUpgrade.isAuditioning(upgradeFor)) return false
         val out = args.getBundle("out")?.let(::songFromBundle) ?: return false
         val inn = args.getBundle("in")?.let(::songFromBundle) ?: return false
         val owner = args.getString("owner")?.takeIf { it.isNotBlank() } ?: return false
+        if (out.isVideo || inn.isVideo) return false
         val draft = studioDraft(args)
         val window = draft.windows(out.durationMillis() / 1000.0, inn.durationMillis() / 1000.0) ?: return false
         stopStudio()
         crossfade?.onSkipRequested()
         clearBoundedContext()
+        autoplayLoadJob?.cancel()
+        autoplayLoadJob = null
+        autoplaySeed = null
+        upgradeJob?.cancel()
         QueueShuffle.setEnabled(false)
         val source = "transition-preview:$owner"
         val items = listOf(out, inn).map { it.copy(playbackSourceId = source,
@@ -1975,8 +1986,13 @@ class PlaybackService : MediaLibraryService() {
                 val elapsed = current.currentPosition / 1000f - (if (incoming) window.inStart else window.outStart).toFloat()
                 // Both decks start at the overlap's zero; handoff changes the source clock, not its origin.
                 StudioTransport.state.value = StudioTransport.State(owner, elapsed)
-                val failed = current.playerError != null || SystemClock.elapsedRealtime() > deadline ||
-                    item?.toSong()?.playbackSourceId != source
+                if (item?.toSong()?.playbackSourceId != source) {
+                    // A new user queue owns the player now. Never pause or clear that queue.
+                    studioPreview = null
+                    StudioTransport.state.value = null
+                    break
+                }
+                val failed = current.playerError != null || SystemClock.elapsedRealtime() > deadline
                 val ended = incoming && elapsed >= draft.overlapSeconds + 2f || current.playbackState == Player.STATE_ENDED
                 if (failed || ended) {
                     crossfade?.onSkipRequested()
@@ -3216,6 +3232,7 @@ class PlaybackService : MediaLibraryService() {
      * everything arriving in one burst at the end of the queue.
      */
     private fun loadAutoplayForCurrentTrack() {
+        if (studioPreview != null) return
         val exoPlayer = player ?: return
         val party = ListenTogether.state.value
         if (!autoplayEnabled(party) ||
@@ -4609,6 +4626,7 @@ class PlaybackService : MediaLibraryService() {
      * instead — see [adoptCachedTrack] and [QualityUpgrade.adoptUnresolved].
      */
     private fun lookForBetterCopy(player: ExoPlayer) {
+        if (studioPreview != null) return
         val item = player.currentMediaItem ?: return
         val mediaId = item.mediaId
         val uri = item.localConfiguration?.uri

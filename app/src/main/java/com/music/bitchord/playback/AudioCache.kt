@@ -2210,8 +2210,16 @@ object AudioCache {
      * Callers must [MediaDataSource.close] it.
      */
     /** Explicit editor read: the exact playback URI, with the normal resolver and cache. */
-    fun studioDataSource(uri: Uri, upstream: DataSource.Factory): MediaDataSource =
-        CacheMediaDataSource(playbackFactory(upstream).createDataSource(), uri)
+    fun studioDataSource(uri: Uri, upstream: DataSource.Factory): MediaDataSource {
+        val delegate = playbackFactory(upstream).createDataSource()
+        // MediaExtractor may invoke MediaDataSource on a different callback
+        // thread. Bypass the *speculative* next-track gate at open, not on the
+        // caller thread: this is an explicit user request for this exact URI.
+        val explicitSource = object : DataSource by delegate {
+            override fun open(dataSpec: DataSpec): Long = DirectSourceGate.ungated { delegate.open(dataSpec) }
+        }
+        return CacheMediaDataSource(explicitSource, uri)
+    }
 
     fun mediaDataSource(uri: Uri): MediaDataSource? {
         if (!isFullyCached(uri)) return null
@@ -2278,6 +2286,7 @@ object AudioCache {
                 val available = try {
                     dataSource.open(DataSpec.Builder().setUri(uri).setPosition(position).build())
                 } catch (error: IOException) {
+                    runCatching { dataSource.close() }
                     return -1
                 }
                 isOpen = true
