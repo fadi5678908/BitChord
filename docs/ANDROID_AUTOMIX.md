@@ -370,3 +370,20 @@ retention tests still need the newly built APK; no new stem separator is present
 Selected custom windows are also checked against both prepared decoder durations.
 The automatic one-third incoming-length cap is not applied to an explicit user
 window; it would otherwise silently shorten a valid transition near a song ending.
+
+Latest verification: GitHub Actions run 45518544008 succeeded for source commit
+`845619c75c661ec0d986decc081c5a865b566a9a` (shared/Android unit-test task step,
+full dev APK assembly, and artifact upload). This includes the simplified editor,
+custom scheduling, decoder-bound validation, diagnostic lifecycle reset, and
+portrait/landscape inline animation compilation.
+
+- Run: https://github.com/fadi5678908/BitChord/actions/runs/45518544008
+- APK bundle: https://github.com/fadi5678908/BitChord/actions/runs/45518544008/artifacts/14979194479
+- Artifact: `bitchord-dev-debug`, 508,102,817 bytes compressed, multiple ABI APKs.
+
+Suggested phone check: use a playlist in normal order, enable a pair, set the
+outgoing start to 0:20, incoming start to 0:10, overlap to 6 seconds, then Apply
+& save and Play from the outgoing song. At normal speed, the intended overlap
+is outgoing 0:20–0:26 with incoming 0:10–0:16. The inline handoff should appear
+without tapping Mix. Verify persistence, pause/resume and changing to another
+playlist. This is a pending acceptance test, not an observed phone result.
