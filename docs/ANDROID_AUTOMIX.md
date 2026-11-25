@@ -481,3 +481,19 @@ An initial comparison run failed because recent build-tools use SDK-scoped
 signer labels instead of `Signer #1`; the corrected parser passed in the run
 linked above. Creating a new workflow file on a non-default branch does not
 register it for direct dispatch, so the existing Android workflow is the entry.
+
+The user's installer screenshot says "Can't install app / There's a problem with
+the app file". This generic text does not establish a signature conflict.
+To test actual installability rather than only APK structure, verification can
+now boot a clean emulator (`install_api`, e.g. `35`) and run `adb install -r` on
+the **downloaded release asset**, preserving installer output/logcat as artifacts
+and surfacing failure text as Actions annotations.
+
+Run [45621898257](https://github.com/fadi5678908/BitChord/actions/runs/45621898257)
+passed an actual clean Android API 35 (Android 15), x86_64 emulator install of
+`automix-test-7a8e139/BitChord-Dev-Automix-universal.apk` (1m55s verification job).
+The job emitted "Published universal APK installed successfully on a clean
+Android emulator." This is not an ARM/Samsung test, an in-place update test, or
+proof of installation on the user's phone. Device model/Android version,
+whether old BitChord Dev is installed, and local download completeness remain
+needed before choosing an installation remedy. No APK was changed or replaced.
