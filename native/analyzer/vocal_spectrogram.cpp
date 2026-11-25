@@ -22,6 +22,7 @@
 
 #include "vocal_spectrogram.h"
 
+#include <algorithm>
 #include <cmath>
 #include <complex>
 #include <vector>
@@ -132,6 +133,50 @@ VocalSpectrogram ComputeVocalSpectrogram(
     }
   }
   return result;
+}
+
+
+std::vector<float> ReconstructVocal(
+    const std::vector<std::vector<float>>& channels,
+    const std::vector<float>& mask, size_t frames) {
+  if (channels.size() != 2 || channels[0].size() != channels[1].size()) return {};
+  const size_t length = channels[0].size(), pad = kVocalSpectrogramFft / 2;
+  if (length <= pad + 1 || frames != length / kVocalSpectrogramHop + 1 ||
+      mask.size() != 2 * kVocalSpectrogramBins * frames) return {};
+  const auto window = HannWindow(kVocalSpectrogramFft);
+  std::vector<float> output(length * 2);
+  std::vector<std::complex<double>> spectrum(kVocalSpectrogramFft);
+  for (size_t c = 0; c < 2; ++c) {
+    std::vector<double> sum(length + 2 * pad, 0), weight(sum.size(), 0);
+    for (size_t f = 0; f < frames; ++f) {
+      const size_t start = f * kVocalSpectrogramHop;
+      for (size_t j = 0; j < kVocalSpectrogramFft; ++j) {
+        auto at = static_cast<long long>(start + j) - static_cast<long long>(pad);
+        if (at < 0) at = -at;
+        if (at >= static_cast<long long>(length)) at = 2 * static_cast<long long>(length) - 2 - at;
+        spectrum[j] = channels[c][static_cast<size_t>(at)] * window[j];
+      }
+      Fft(spectrum);
+      for (size_t b = 0; b < kVocalSpectrogramBins; ++b) {
+        const float raw = mask[(c * kVocalSpectrogramBins + b) * frames + f];
+        const double gain = std::isfinite(raw) ? std::max(0.0, std::min(1.0, double(raw))) : 0;
+        spectrum[b] *= gain;
+        if (b > 0 && b < pad) spectrum[kVocalSpectrogramFft - b] = std::conj(spectrum[b]);
+      }
+      // Inverse FFT through conjugation, followed by window-squared OLA normalization.
+      for (auto& bin : spectrum) bin = std::conj(bin);
+      Fft(spectrum);
+      for (size_t j = 0; j < kVocalSpectrogramFft; ++j) {
+        sum[start + j] += spectrum[j].real() / kVocalSpectrogramFft * window[j];
+        weight[start + j] += window[j] * window[j];
+      }
+    }
+    for (size_t i = 0; i < length; ++i) {
+      const size_t at = i + pad;
+      output[2 * i + c] = weight[at] > 1e-12 ? float(sum[at] / weight[at]) : 0;
+    }
+  }
+  return output;
 }
 
 }  // namespace bitchord::smart

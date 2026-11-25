@@ -68,6 +68,10 @@ object VocalSpectrogram {
 
     const val CHANNELS = 2
 
+    fun reconstruct(left: FloatArray, right: FloatArray, mask: FloatArray, frames: Int): FloatArray? =
+        nativeReconstruct(left, right, mask, frames).takeIf { it.size == left.size * 2 }
+
+    @JvmStatic private external fun nativeReconstruct(left: FloatArray, right: FloatArray, mask: FloatArray, frames: Int): FloatArray
     @JvmStatic private external fun nativeCompute(left: FloatArray, right: FloatArray, rate: Double): FloatArray
     @JvmStatic private external fun nativeBins(): Int
     @JvmStatic private external fun nativeSampleRate(): Double
@@ -141,7 +145,7 @@ class VocalTracker(
      * cover a transition overlap plus padding. Shorter input is zero-padded; longer is refused
      * rather than chunked, because a transition never needs more than one window.
      */
-    fun track(left: FloatArray, right: FloatArray, rate: Double): FloatArray? {
+    fun track(left: FloatArray, right: FloatArray, rate: Double): FloatArray? = synchronized(lock) {
         if (!VocalSpectrogram.available) return null
         val resampledLeft = MelSpectrogram.resample(left, rate, VocalSpectrogram.sampleRate) ?: return null
         val resampledRight = MelSpectrogram.resample(right, rate, VocalSpectrogram.sampleRate) ?: return null
@@ -256,6 +260,43 @@ class VocalTracker(
             curve[frame] = if (count > 0) (sum / count).toFloat() else 0f
         }
         return curve
+    }
+
+    /** Real two-source reconstruction, not the band-averaged presence curve used by track(). */
+    data class Separated(val left: FloatArray, val right: FloatArray, val vocal: FloatArray) {
+        val frames: Int get() = left.size
+        fun mixture(frame: Int, channel: Int): Float = if (channel == 0) left[frame] else right[frame]
+        fun instrument(frame: Int, channel: Int): Float = mixture(frame, channel) - vocal[frame * 2 + channel]
+    }
+
+    fun separate(left: FloatArray, right: FloatArray, rate: Double, abort: () -> Boolean = { false }): Separated? = synchronized(lock) {
+        if (!VocalSpectrogram.available || abort()) return@synchronized null
+        // Keep one bounded window, never run this model on a whole song in one allocation.
+        if (!rate.isFinite() || rate <= 0 || left.size != right.size || left.size / rate > 20.0) return@synchronized null
+        val l = MelSpectrogram.resample(left, rate, VocalSpectrogram.sampleRate) ?: return@synchronized null
+        val r = MelSpectrogram.resample(right, rate, VocalSpectrogram.sampleRate) ?: return@synchronized null
+        val spec = VocalSpectrogram.compute(l, r) ?: return@synchronized null
+        if (spec.frames > FIXED_FRAMES || abort()) return@synchronized null
+        val active = session() ?: return@synchronized null
+        runCatching {
+            val backing = ByteBuffer.allocateDirect(2 * spec.bins * FIXED_FRAMES * Float.SIZE_BYTES).order(ByteOrder.nativeOrder())
+            fillFixedFrames(backing.asFloatBuffer(), spec.values, spec.bins, spec.frames)
+            val shape = longArrayOf(1, 2, spec.bins.toLong(), FIXED_FRAMES.toLong())
+            OnnxTensor.createTensor(OrtEnvironment.getEnvironment(), backing.asFloatBuffer(), shape).use { tensor ->
+                active.run(mapOf(active.inputNames.first() to tensor)).use { outputs ->
+                    if (abort()) return@use null
+                    val target = (outputs.get(0) as OnnxTensor).floatBuffer
+                    val mask = FloatArray(spec.values.size)
+                    for (c in 0..1) for (b in 0 until spec.bins) for (f in 0 until spec.frames) {
+                        val index = (c * spec.bins + b) * spec.frames + f
+                        val magnitude = spec.values[index]
+                        val ratio = if (magnitude > 1e-8f) target.get((c * spec.bins + b) * FIXED_FRAMES + f) / magnitude else 0f
+                        mask[index] = if (ratio.isFinite()) ratio.coerceIn(0f, 1f) else 0f
+                    }
+                    VocalSpectrogram.reconstruct(l, r, mask, spec.frames)?.let { Separated(l, r, it) }
+                }
+            }
+        }.onFailure { AnalysisLog.warn("Local two-source reconstruction failed", it) }.getOrNull()
     }
 
     fun release() {

@@ -76,4 +76,10 @@ VocalSpectrogram ComputeVocalSpectrogram(
   double sample_rate
 );
 
+// Mixture-phase inverse STFT. Mask is [channel][bin][frame], bounded 0..1.
+// Returns interleaved stereo, exactly the original sample count; empty on invalid input.
+std::vector<float> ReconstructVocal(
+    const std::vector<std::vector<float>>& channels,
+    const std::vector<float>& mask, size_t frames);
+
 }  // namespace bitchord::smart

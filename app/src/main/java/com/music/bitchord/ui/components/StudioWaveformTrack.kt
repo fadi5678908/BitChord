@@ -1,7 +1,7 @@
 package com.music.bitchord.ui.components
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -39,7 +39,10 @@ internal fun StudioWaveformTrack(
 ) {
     val span = minOf(24f, length.coerceAtLeast(0.1f))
     // Chunked viewport: a small drag does not decode the audio on every pointer frame.
-    val region = (floor(start / 6f) * 6f - 6f).coerceIn(0f, (length - span).coerceAtLeast(0f))
+    val requestedRegion = (floor(start / 6f) * 6f - 6f).coerceIn(0f, (length - span).coerceAtLeast(0f))
+    var dragging by remember(song) { mutableStateOf(false) }
+    var region by remember(song) { mutableFloatStateOf(requestedRegion) }
+    LaunchedEffect(requestedRegion, dragging) { if (!dragging) region = requestedRegion }
     var retry by remember(song) { mutableIntStateOf(0) }
     var bands by remember(song, region, span) { mutableStateOf<MixWaveform.Bands?>(null) }
     var loading by remember(song, region, span) { mutableStateOf(true) }
@@ -66,7 +69,8 @@ internal fun StudioWaveformTrack(
             var envelopeDrag = false
             var dragStart = 0f
             var origin = 0f
-            detectDragGestures(onDragStart = { position ->
+            detectHorizontalDragGestures(onDragEnd = { dragging = false }, onDragCancel = { dragging = false }, onDragStart = { position ->
+                dragging = true
                 val fraction = if (outgoing) latestHandoff.outgoingUntil else latestHandoff.incomingFrom
                 val handleX = (latestStart + overlap * fraction - region) / span * size.width
                 envelopeDrag = abs(position.x - handleX) < handleRadius && position.y > size.height * 0.55f

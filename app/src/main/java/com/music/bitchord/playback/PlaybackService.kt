@@ -643,7 +643,11 @@ class PlaybackService : MediaLibraryService() {
         if (activeFilter === transitionFilterA) loudnessB else loudnessA
 
     /** Automix's DSP analyzer — see [com.music.bitchord.playback.smart.TrackAnalyzer]. */
-    private val trackAnalyzer = com.music.bitchord.playback.smart.TrackAnalyzer(this, AudioCache)
+    @Volatile private var stemPreparationBusy = false
+    private val trackAnalyzer = com.music.bitchord.playback.smart.TrackAnalyzer(this, AudioCache) { stemPreparationBusy }
+    private val localStemStudio by lazy { com.music.bitchord.playback.smart.LocalStemStudio(this, trackAnalyzer) }
+    private var stemPreparation: Job? = null
+    private var pendingStemOwner: String? = null
 
     /** Shared with the crossfade's tail player, so both read the same disk cache. */
     private var mediaSourceFactory: DefaultMediaSourceFactory? = null
@@ -1929,6 +1933,10 @@ class PlaybackService : MediaLibraryService() {
     private var studioPreviewJob: Job? = null
 
     private fun stopStudio(owner: String? = null) {
+        if (owner == null || pendingStemOwner == owner) {
+            pendingStemOwner = null
+            stemPreparation?.cancel()
+        }
         val preview = studioPreview ?: run {
             if (owner == null || StudioTransport.state.value?.owner == owner) StudioTransport.state.value = null
             return
@@ -2006,6 +2014,75 @@ class PlaybackService : MediaLibraryService() {
             }
         }
         return true
+    }
+
+    private suspend fun playLocalStems(args: Bundle): SessionResult {
+        val owner = args.getString("owner") ?: return SessionResult(SessionError.ERROR_BAD_VALUE)
+        if (CastController.state.value.casting || castPlayback.active || ListenTogether.state.value.inParty ||
+            BitPerfectOutput.status.value.active || versionSwapJob?.isActive == true || QualityUpgrade.isAuditioning(upgradeFor))
+            return SessionResult(SessionError.ERROR_INVALID_STATE)
+        val out = args.getBundle("out")?.let(::songFromBundle) ?: return SessionResult(SessionError.ERROR_BAD_VALUE)
+        val inn = args.getBundle("in")?.let(::songFromBundle) ?: return SessionResult(SessionError.ERROR_BAD_VALUE)
+        val mode = com.music.bitchord.playback.smart.LocalStemAudition.entries.firstOrNull { it.name == args.getString("stemMode") }
+            ?: return SessionResult(SessionError.ERROR_BAD_VALUE)
+        stopStudio()
+        crossfade?.onSkipRequested()
+        player?.pause()
+        val job = kotlin.coroutines.coroutineContext[Job] ?: return SessionResult(SessionError.ERROR_INVALID_STATE)
+        stemPreparation = job
+        pendingStemOwner = owner
+        stemPreparationBusy = true
+        StudioTransport.state.value = StudioTransport.State(owner, stage = "outgoing")
+        try {
+            val (file, lead) = withContext(Dispatchers.IO) {
+                studioDecodeLock.withLock {
+                    localStemStudio.render(out, inn, studioDraft(args), mode, abort = { !job.isActive }) { stage ->
+                        if (job.isActive) StudioTransport.state.value = StudioTransport.State(owner, stage = stage)
+                    }
+                }
+            }
+            if (!job.isActive || pendingStemOwner != owner) return SessionResult(SessionError.ERROR_INVALID_STATE)
+            pendingStemOwner = null
+            clearBoundedContext()
+            autoplayLoadJob?.cancel(); autoplayLoadJob = null; autoplaySeed = null
+            upgradeJob?.cancel()
+            val source = "transition-preview:$owner"
+            val exo = player ?: return SessionResult(SessionError.ERROR_INVALID_STATE)
+            val song = Song(videoId = "local-stem:$owner", title = out.title + " → " + inn.title,
+                artist = "Local vocal / instrumental audition", thumbnailUrl = out.thumbnailUrl,
+                localUri = file.toURI().toString(), playbackSourceId = source,
+                playbackSourceType = PlaybackSourceType.BROWSE, queueTier = QueueTier.CONTEXT)
+            studioPreview = StudioPreview(owner, source, song.videoId, "", studioDraft(args))
+            exo.repeatMode = Player.REPEAT_MODE_OFF
+            exo.setMediaItem(song.toMediaItem())
+            exo.prepare(); exo.play()
+            StudioTransport.state.value = StudioTransport.State(owner, elapsed = -lead)
+            studioPreviewJob = scope.launch {
+                while (isActive && studioPreview?.owner == owner) {
+                    val current = player ?: break
+                    if (current.currentMediaItem?.toSong()?.playbackSourceId != source) {
+                        studioPreview = null; StudioTransport.state.value = null; break
+                    }
+                    val finished = current.playbackState == Player.STATE_ENDED || current.playerError != null
+                    StudioTransport.state.value = StudioTransport.State(owner, current.currentPosition / 1000f - lead,
+                        running = !finished, error = current.playerError != null)
+                    if (finished) { current.pause(); studioPreview = null; break }
+                    delay(40)
+                }
+            }
+            return SessionResult(SessionResult.RESULT_SUCCESS)
+        } catch (cancelled: CancellationException) {
+            if (StudioTransport.state.value?.owner == owner && studioPreview?.owner != owner) StudioTransport.state.value = null
+            throw cancelled
+        } catch (error: Exception) {
+            Log.w("BitChordLocalStems", "Local separation failed", error)
+            StudioTransport.state.value = StudioTransport.State(owner, running = false, error = true)
+            return SessionResult(SessionError.ERROR_IO)
+        } finally {
+            if (stemPreparation === job) {
+                stemPreparation = null; pendingStemOwner = null; stemPreparationBusy = false
+            }
+        }
     }
 
     private val playlistTransitions by lazy { PlaylistTransitionDraftStore.get(this) }
@@ -8533,6 +8610,7 @@ class PlaybackService : MediaLibraryService() {
         ): MediaSession.ConnectionResult {
             val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
                 .buildUpon()
+                .add(SessionCommand(ACTION_STUDIO_STEMS, Bundle.EMPTY))
                 .add(SessionCommand(ACTION_STUDIO_WAVE, Bundle.EMPTY))
                 .add(SessionCommand(ACTION_STUDIO_PLAY, Bundle.EMPTY))
                 .add(SessionCommand(ACTION_STUDIO_STOP, Bundle.EMPTY))
@@ -8574,6 +8652,7 @@ class PlaybackService : MediaLibraryService() {
             args: Bundle,
         ): ListenableFuture<SessionResult> {
             when (customCommand.customAction) {
+                ACTION_STUDIO_STEMS -> return scope.future { playLocalStems(args) }
                 ACTION_STUDIO_WAVE -> return scope.future(Dispatchers.IO) {
                     studioDecodeLock.withLock {
                         val song = args.getBundle("song")?.let(::songFromBundle)

@@ -89,4 +89,22 @@ Java_com_music_bitchord_playback_smart_VocalSpectrogram_nativeFftSize(
   return static_cast<jint>(bitchord::smart::kVocalSpectrogramFft);
 }
 
+
+JNIEXPORT jfloatArray JNICALL
+Java_com_music_bitchord_playback_smart_VocalSpectrogram_nativeReconstruct(
+    JNIEnv* env, jclass, jfloatArray left, jfloatArray right, jfloatArray mask, jint frames) {
+  if (frames <= 0) return env->NewFloatArray(0);
+  std::vector<std::vector<float>> channels(2);
+  channels[0].resize(env->GetArrayLength(left));
+  channels[1].resize(env->GetArrayLength(right));
+  env->GetFloatArrayRegion(left, 0, channels[0].size(), channels[0].data());
+  env->GetFloatArrayRegion(right, 0, channels[1].size(), channels[1].data());
+  std::vector<float> values(env->GetArrayLength(mask));
+  env->GetFloatArrayRegion(mask, 0, values.size(), values.data());
+  const auto samples = bitchord::smart::ReconstructVocal(channels, values, frames);
+  auto result = env->NewFloatArray(samples.size());
+  if (result && !samples.empty()) env->SetFloatArrayRegion(result, 0, samples.size(), samples.data());
+  return result;
+}
+
 }  // extern "C"

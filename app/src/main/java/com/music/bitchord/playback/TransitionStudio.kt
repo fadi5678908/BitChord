@@ -12,6 +12,7 @@ import com.music.bitchord.playback.smart.StemHandoff
 import kotlinx.coroutines.guava.await
 
 internal const val ACTION_STUDIO_WAVE = "com.music.bitchord.STUDIO_WAVE"
+internal const val ACTION_STUDIO_STEMS = "com.music.bitchord.STUDIO_STEMS"
 internal const val ACTION_STUDIO_PLAY = "com.music.bitchord.STUDIO_PLAY"
 internal const val ACTION_STUDIO_STOP = "com.music.bitchord.STUDIO_STOP"
 
@@ -25,13 +26,14 @@ internal suspend fun MediaController.studioWave(song: Song, from: Float, to: Flo
         b.getFloatArray("mid") ?: return null, b.getFloatArray("high") ?: return null)
 }
 
-internal suspend fun MediaController.studioPlay(owner: String, out: Song, inn: Song, draft: PlaylistTransitionDraft): Boolean {
+internal suspend fun MediaController.studioPlay(owner: String, out: Song, inn: Song, draft: PlaylistTransitionDraft, stems: com.music.bitchord.playback.smart.LocalStemAudition? = null): Boolean {
     val d = draft.sanitized()
     val args = bundleOf("owner" to owner, "out" to out.toSongBundle(), "in" to inn.toSongBundle(),
         "overlap" to d.overlapSeconds, "outStart" to d.outgoingStartSeconds,
         "inStart" to d.incomingStartSeconds, "trim" to d.outgoingTrimSeconds, "cue" to d.incomingCueSeconds,
         "until" to d.volumeHandoff.outgoingUntil, "from" to d.volumeHandoff.incomingFrom)
-    return sendCustomCommand(SessionCommand(ACTION_STUDIO_PLAY, Bundle.EMPTY), args).await().resultCode == SessionResult.RESULT_SUCCESS
+    stems?.let { args.putString("stemMode", it.name) }
+    return sendCustomCommand(SessionCommand(if (stems == null) ACTION_STUDIO_PLAY else ACTION_STUDIO_STEMS, Bundle.EMPTY), args).await().resultCode == SessionResult.RESULT_SUCCESS
 }
 
 internal fun MediaController.studioStop(owner: String) {
@@ -48,6 +50,6 @@ internal fun studioDraft(args: Bundle) = PlaylistTransitionDraft(
 
 /** Actual media positions, not a decorative timer. Reset when the service releases the audition. */
 internal object StudioTransport {
-    data class State(val owner: String, val elapsed: Float = -2f, val running: Boolean = true, val error: Boolean = false)
+    data class State(val owner: String, val elapsed: Float = -2f, val running: Boolean = true, val error: Boolean = false, val stage: String? = null)
     val state = kotlinx.coroutines.flow.MutableStateFlow<State?>(null)
 }

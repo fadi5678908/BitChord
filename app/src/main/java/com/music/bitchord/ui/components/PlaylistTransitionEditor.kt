@@ -62,6 +62,7 @@ fun PlaylistTransitionEditor(playlistId: String, songs: List<Song>, onDismiss: (
     androidx.compose.runtime.key(key) {
         val owner = remember { UUID.randomUUID().toString() }
         val preview = transport?.takeIf { it.owner == owner }
+        var stemMode by rememberSaveable { mutableStateOf<LocalStemAudition?>(null) }
         var previewFailed by remember { mutableStateOf(false) }
         var previewStarting by remember { mutableStateOf(false) }
         DisposableEffect(controller, owner) {
@@ -110,16 +111,33 @@ fun PlaylistTransitionEditor(playlistId: String, songs: List<Song>, onDismiss: (
                             Switch(checked = draft.enabled, onCheckedChange = { edit(draft.copy(enabled = it)) }, enabled = editable,
                                 modifier = Modifier.semantics { contentDescription = context.getString(R.string.transition_enable) })
                         }
+                        Text(stringResource(R.string.transition_audition_mode), style = MaterialTheme.typography.titleSmall)
+                        val modes = listOf<LocalStemAudition?>(null, LocalStemAudition.VOCAL_OVER_RHYTHM,
+                            LocalStemAudition.VOCALS, LocalStemAudition.INSTRUMENTAL)
+                        modes.chunked(2).forEach { row ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                row.forEach { mode ->
+                                    FilterChip(selected = stemMode == mode, onClick = { stemMode = mode; previewFailed = false }, enabled = editable,
+                                        label = { Text(stringResource(when (mode) {
+                                            null -> R.string.transition_mode_normal
+                                            LocalStemAudition.VOCAL_OVER_RHYTHM -> R.string.transition_mode_vocal_rhythm
+                                            LocalStemAudition.VOCALS -> R.string.transition_mode_vocals
+                                            LocalStemAudition.INSTRUMENTAL -> R.string.transition_mode_music
+                                        })) }, modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                        if (stemMode != null) Text(stringResource(R.string.transition_stem_notice), style = MaterialTheme.typography.bodySmall)
                         val outMax = (outLength - draft.overlapSeconds).coerceAtLeast(0f)
                         val inMax = (inLength - draft.overlapSeconds).coerceAtLeast(0f)
                         val outStart = draft.outgoingStartSeconds ?: (outMax - draft.outgoingTrimSeconds).coerceAtLeast(0f)
                         val inStart = draft.incomingStartSeconds ?: draft.incomingCueSeconds
                         TrackTiming(outgoing, stringResource(R.string.transition_exit_point), outStart, outLength, draft.overlapSeconds,
                             Color(0xFFFFA348), editable && outMax > 0f, outMax, controller, true, draft.volumeHandoff,
-                            preview?.takeIf { it.running }?.elapsed, { edit(draft.copy(volumeHandoff = draft.volumeHandoff.copy(outgoingUntil = it))) }) { edit(draft.copy(outgoingStartSeconds = it)) }
+                            preview?.takeIf { it.running && it.stage == null }?.elapsed, { edit(draft.copy(volumeHandoff = draft.volumeHandoff.copy(outgoingUntil = it))) }) { edit(draft.copy(outgoingStartSeconds = it)) }
                         TrackTiming(incoming, stringResource(R.string.transition_entry_point), inStart, inLength, draft.overlapSeconds,
                             Color(0xFF58A7FF), editable && inMax > 0f, inMax, controller, false, draft.volumeHandoff,
-                            preview?.takeIf { it.running }?.elapsed, { edit(draft.copy(volumeHandoff = draft.volumeHandoff.copy(incomingFrom = it))) }) { edit(draft.copy(incomingStartSeconds = it)) }
+                            preview?.takeIf { it.running && it.stage == null }?.elapsed, { edit(draft.copy(volumeHandoff = draft.volumeHandoff.copy(incomingFrom = it))) }) { edit(draft.copy(incomingStartSeconds = it)) }
                         Column {
                             Text(stringResource(R.string.transition_seconds_value, stringResource(R.string.transition_overlap), draft.overlapSeconds))
                             Slider(value = draft.overlapSeconds, onValueChange = {
@@ -130,6 +148,7 @@ fun PlaylistTransitionEditor(playlistId: String, songs: List<Song>, onDismiss: (
                             }, valueRange = 2f..12f, enabled = editable,
                                 modifier = Modifier.semantics { contentDescription = context.getString(R.string.transition_overlap) })
                         }
+                        Text(stringResource(R.string.transition_preview_notice), style = MaterialTheme.typography.bodySmall)
                         Text(stringResource(R.string.transition_timing_help), style = MaterialTheme.typography.bodySmall)
                         if (!valid || !unambiguous) Text(stringResource(R.string.transition_invalid_timing), color = MaterialTheme.colorScheme.error)
                         if (dirty) Text(stringResource(R.string.transition_unsaved), color = MaterialTheme.colorScheme.primary)
@@ -149,18 +168,25 @@ fun PlaylistTransitionEditor(playlistId: String, songs: List<Song>, onDismiss: (
                         Text(stringResource(if (saving) R.string.transition_saving else R.string.transition_apply))
                     }
                     if (previewFailed || preview?.error == true) Text(stringResource(R.string.transition_preview_failed), color = MaterialTheme.colorScheme.error)
-                    Text(stringResource(R.string.transition_preview_notice), style = MaterialTheme.typography.bodySmall)
+                    preview?.stage?.let { stage ->
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        Text(stringResource(when (stage) {
+                            "outgoing" -> R.string.transition_separate_out
+                            "incoming" -> R.string.transition_separate_in
+                            else -> R.string.transition_render_stems
+                        }), style = MaterialTheme.typography.bodySmall)
+                    }
                     FilledTonalButton(onClick = {
                         if (previewRunning) controller?.studioStop(owner)
                         else scope.launch {
                             previewStarting = true
                             previewFailed = false
-                            try { previewFailed = controller?.studioPlay(owner, outgoing, incoming, draft) != true }
+                            try { previewFailed = controller?.studioPlay(owner, outgoing, incoming, draft, stemMode) != true }
                             catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
                             catch (_: Exception) { previewFailed = true }
                             finally { previewStarting = false }
                         }
-                    }, enabled = controller != null && loaded && valid && draft.enabled && !saving && !previewStarting,
+                    }, enabled = controller != null && loaded && valid && draft.enabled && !saving && (!previewStarting || preview?.running == true),
                         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
                         Text(stringResource(if (previewRunning) R.string.transition_stop_preview else R.string.transition_preview))
                     }

@@ -136,7 +136,7 @@ object AudioDecoder {
     ): Pair<StereoPcm, Double>? {
         val left = ArrayList<FloatArray>()
         val right = ArrayList<FloatArray>()
-        val decoded = decodeRaw(source, startSeconds, endSeconds, abort) { buffer, info, channels, _ ->
+        val decoded = decodeRaw(source, startSeconds, endSeconds, abort, trimToWindow = true) { buffer, info, channels, _ ->
             toStereo(buffer, info, channels, left, right)
         } ?: return null
         return StereoPcm(flatten(left), flatten(right), decoded.first) to decoded.second
@@ -182,6 +182,7 @@ object AudioDecoder {
         startSeconds: Double,
         endSeconds: Double,
         abort: () -> Boolean,
+        trimToWindow: Boolean = false,
         onBuffer: (ByteBuffer, MediaCodec.BufferInfo, Int, Int) -> Unit,
     ): Pair<Double, Double>? {
         if (endSeconds <= startSeconds) return null
@@ -198,11 +199,14 @@ object AudioDecoder {
 
             val startUs = (startSeconds * 1_000_000).toLong()
             val endUs = (endSeconds * 1_000_000).toLong()
-            extractor.seekTo(startUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
+            extractor.seekTo(startUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
 
             codec = runCatching { MediaCodec.createDecoderByType(mime) }
                 .onFailure { Log.w(TAG, "No decoder for $mime", it) }
                 .getOrNull() ?: return null
+            // All readers below interpret PCM16. Ask explicitly; a 24-bit/float
+            // local file must not be interpreted as pairs of unrelated shorts.
+            format.setInteger(MediaFormat.KEY_PCM_ENCODING, android.media.AudioFormat.ENCODING_PCM_16BIT)
             codec.configure(format, null, null, 0)
             codec.start()
 
@@ -252,6 +256,7 @@ object AudioDecoder {
                     when (outputIndex) {
                         MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
                             val newFormat = codec.outputFormat
+                            check((newFormat.intOrNull(MediaFormat.KEY_PCM_ENCODING) ?: android.media.AudioFormat.ENCODING_PCM_16BIT) == android.media.AudioFormat.ENCODING_PCM_16BIT)
                             outputRate = newFormat.intOrNull(MediaFormat.KEY_SAMPLE_RATE) ?: outputRate
                             outputChannels = newFormat.intOrNull(MediaFormat.KEY_CHANNEL_COUNT) ?: outputChannels
                         }
@@ -261,12 +266,17 @@ object AudioDecoder {
                                 outputDone = true
                             }
                             if (bufferInfo.size > 0) {
-                                if (!sawFirstSample) {
-                                    actualStartSeconds = bufferInfo.presentationTimeUs / 1_000_000.0
-                                    sawFirstSample = true
-                                }
-                                codec.getOutputBuffer(outputIndex)?.let { output ->
-                                    onBuffer(output, bufferInfo, outputChannels, outputRate)
+                                val info = if (trimToWindow && outputRate > 0) {
+                                    val bytesPerFrame = max(1, outputChannels) * 2
+                                    val count = bufferInfo.size / bytesPerFrame
+                                    val first = kotlin.math.ceil((startUs - bufferInfo.presentationTimeUs) * outputRate / 1_000_000.0).toInt().coerceIn(0, count)
+                                    val last = kotlin.math.ceil((endUs - bufferInfo.presentationTimeUs) * outputRate / 1_000_000.0).toInt().coerceIn(first, count)
+                                    MediaCodec.BufferInfo().apply { set(bufferInfo.offset + first * bytesPerFrame,
+                                        (last - first) * bytesPerFrame, bufferInfo.presentationTimeUs + first * 1_000_000L / outputRate, bufferInfo.flags) }
+                                } else bufferInfo
+                                if (info.size > 0) {
+                                    if (!sawFirstSample) { actualStartSeconds = info.presentationTimeUs / 1_000_000.0; sawFirstSample = true }
+                                    codec.getOutputBuffer(outputIndex)?.let { output -> onBuffer(output, info, outputChannels, outputRate) }
                                 }
                                 if (bufferInfo.presentationTimeUs > endUs) outputDone = true
                             }

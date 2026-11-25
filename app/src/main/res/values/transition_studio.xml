@@ -56,4 +56,13 @@
     <string name="transition_preview_failed">The transition could not complete. Check audio access, full durations and output settings. Preview is unavailable with Cast, Listen Together, bit-perfect output or the after-track sleep timer.</string>
     <string name="transition_fine">Fine adjustments</string>
     <string name="transition_hide_fine">Hide fine adjustments</string>
+    <string name="transition_audition_mode">Audition sound</string>
+    <string name="transition_mode_normal">Original mix</string>
+    <string name="transition_mode_vocal_rhythm">Vocal over rhythm</string>
+    <string name="transition_mode_vocals">Vocals only</string>
+    <string name="transition_mode_music">Instruments only</string>
+    <string name="transition_stem_notice">Local playlist audition: both tracks must be files on this phone (downloads work too). The bundled model reconstructs vocals and accompaniment on-device; some bleed is expected. This is not separate drums/bass. Separation modes are preview-only; Apply saves timing and master fades, not separated playback.</string>
+    <string name="transition_separate_out">Separating the outgoing local clip… You can cancel.</string>
+    <string name="transition_separate_in">Separating the incoming local clip… You can cancel.</string>
+    <string name="transition_render_stems">Rendering the vocal / rhythm audition on this phone…</string>
 </resources>

@@ -56,4 +56,13 @@
     <string name="transition_preview_failed">تعذّر إكمال الانتقال. تحقّق من مصدر الصوت والمدد وإعدادات الإخراج. المعاينة غير متاحة مع البث الخارجي أو الاستماع الجماعي أو الإخراج المطابق للبت أو مؤقت النوم بنهاية الأغنية.</string>
     <string name="transition_fine">ضبط دقيق</string>
     <string name="transition_hide_fine">إخفاء الضبط الدقيق</string>
+    <string name="transition_audition_mode">صوت المعاينة</string>
+    <string name="transition_mode_normal">المزيج الأصلي</string>
+    <string name="transition_mode_vocal_rhythm">غناء فوق الإيقاع</string>
+    <string name="transition_mode_vocals">الغناء فقط</string>
+    <string name="transition_mode_music">الآلات فقط</string>
+    <string name="transition_stem_notice">معاينة لقائمة محلية: يجب أن تكون الأغنيتان ملفين على الهاتف، وتشمل الملفات المنزّلة. يعيد النموذج بناء الغناء والمرافقة على الجهاز وقد تبقى تسريبات صوتية. لا يفصل الطبول والباس مستقلين. أوضاع الفصل للمعاينة فقط؛ يحفظ زر التطبيق التوقيت والتلاشي ولا يفعّل المسارات المفصولة في التشغيل العادي.</string>
+    <string name="transition_separate_out">جارٍ فصل مقطع الأغنية الحالية… يمكنك الإلغاء.</string>
+    <string name="transition_separate_in">جارٍ فصل مقطع الأغنية التالية… يمكنك الإلغاء.</string>
+    <string name="transition_render_stems">جارٍ تجهيز معاينة الغناء والإيقاع على الهاتف…</string>
 </resources>

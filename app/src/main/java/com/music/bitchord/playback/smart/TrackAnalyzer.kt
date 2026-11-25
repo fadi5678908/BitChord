@@ -63,7 +63,7 @@ import java.util.Locale
  * plain fade.
  */
 @UnstableApi
-class TrackAnalyzer(private val context: Context, private val cache: AudioCache) {
+class TrackAnalyzer(private val context: Context, private val cache: AudioCache, private val externalBusy: () -> Boolean = { false }) {
 
     private val tracker = BeatTracker(
         modelPath = {
@@ -117,7 +117,7 @@ class TrackAnalyzer(private val context: Context, private val cache: AudioCache)
      * flight, rather than latched when the party starts, so joining one stops
      * the work already running instead of only the work not yet queued.
      */
-    private val stopped: Boolean get() = ListenTogether.state.value.inParty
+    private val stopped: Boolean get() = ListenTogether.state.value.inParty || externalBusy()
 
     /** The last thermal status the system reported; see [overheated]. */
     @Volatile private var thermalStatus = 0
@@ -1566,6 +1566,10 @@ class TrackAnalyzer(private val context: Context, private val cache: AudioCache)
         )
         return bands
     }
+
+    /** Shares the existing model/lock; never creates a second simultaneous vocal-model session. */
+    fun separateLocal(left: FloatArray, right: FloatArray, rate: Double, abort: () -> Boolean): VocalTracker.Separated? =
+        vocals.separate(left, right, rate, abort)
 
     fun release() {
         executor.shutdownNow()
