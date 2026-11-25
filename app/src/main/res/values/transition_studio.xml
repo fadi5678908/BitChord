@@ -54,4 +54,6 @@
     <string name="transition_stop_preview">■ Stop preview</string>
     <string name="transition_preview_notice">Preview replaces the current queue with these two tracks, starts 2 seconds before the overlap and stops 2 seconds after it. Unsaved edits can be auditioned; only Apply makes them permanent.</string>
     <string name="transition_preview_failed">The transition could not complete. Check audio access, full durations and output settings. Preview is unavailable with Cast, Listen Together, bit-perfect output or the after-track sleep timer.</string>
+    <string name="transition_fine">Fine adjustments</string>
+    <string name="transition_hide_fine">Hide fine adjustments</string>
 </resources>

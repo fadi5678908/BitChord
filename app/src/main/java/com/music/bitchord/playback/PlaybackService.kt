@@ -1952,7 +1952,7 @@ class PlaybackService : MediaLibraryService() {
         val out = args.getBundle("out")?.let(::songFromBundle) ?: return false
         val inn = args.getBundle("in")?.let(::songFromBundle) ?: return false
         val owner = args.getString("owner")?.takeIf { it.isNotBlank() } ?: return false
-        if (out.isVideo || inn.isVideo) return false
+        if (out.isVideo || inn.isVideo || out.isVideoOrigin || inn.isVideoOrigin) return false
         val draft = studioDraft(args)
         val window = draft.windows(out.durationMillis() / 1000.0, inn.durationMillis() / 1000.0) ?: return false
         stopStudio()
@@ -1992,7 +1992,8 @@ class PlaybackService : MediaLibraryService() {
                     StudioTransport.state.value = null
                     break
                 }
-                val failed = current.playerError != null || SystemClock.elapsedRealtime() > deadline
+                val failed = current.playerError != null || SystemClock.elapsedRealtime() > deadline ||
+                    (!incoming && elapsed > draft.overlapSeconds + 2f)
                 val ended = incoming && elapsed >= draft.overlapSeconds + 2f || current.playbackState == Player.STATE_ENDED
                 if (failed || ended) {
                     crossfade?.onSkipRequested()

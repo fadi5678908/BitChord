@@ -387,3 +387,57 @@ outgoing start to 0:20, incoming start to 0:10, overlap to 6 seconds, then Apply
 is outgoing 0:20–0:26 with incoming 0:10–0:16. The inline handoff should appear
 without tapping Mix. Verify persistence, pause/resume and changing to another
 playlist. This is a pending acceptance test, not an observed phone result.
+
+## Source-waveform transition studio (supersedes the timing-only editor above)
+
+The editor now decodes bounded 24-second viewports of the **playback URI** using
+its ordinary resolver/cache, never an analysis-matched sibling rendition. Audio
+is decoded on the phone; normal source fetching is allowed, but nothing is sent
+to a separator or an external processing server. One decode at a time; waveform
+arrays have 480 bins, PCM is streamed, cancelled views abort their decode. A
+source/codec failure shows an explicit retry message, not synthetic bars.
+
+Orange and blue decks expose draggable source selections and white master-gain
+handles. Fine adjustments expose accessible source/envelope sliders and one-second
+steps. The volume curves are independent from the reserved stem designs. They
+are persisted in the playlist profile and carried through TransitionPlan into
+CrossfadeController's actual faders; legacy profiles default to equal power.
+There is still **no four-stem separator**. Frequency waveforms are not stems.
+
+Preview is a real service command through the regular two-deck controller. It
+replaces the current queue with this pair, starts two seconds before the chosen
+outgoing position and stops two seconds after the incoming overlap. Unsaved
+settings are scoped to an opaque editor owner and never persisted by preview.
+It uses the service's audio-focus/notification/noisy handling. Stop, pair change,
+close and disposal cancel only that owner's audition, not a subsequently started
+user queue. Cast, parties, bit-perfect output, video-origin tracks, an active
+version audition and after-track sleep are refused. Timeouts, missed transitions
+and playback errors must be reported as failures rather than a successful demo.
+
+Two concrete defects found by inspection:
+
+1. `queuedDurationMs` read only URI `d=`. File/content/download URIs have no such
+   query, although the queued item retains its duration in metadata. Explicit
+   custom plans therefore returned null before Media3 prepared the next track.
+   Metadata is now preferred, with URI fallback and overflow checks. Decoder
+   durations still authorize the final region before it can sound.
+2. `CacheMediaDataSource.getSize` opened a source without marking it open, making
+   its finally-close a no-op. Size probes could leak a source and leave it open
+   for the next read. Successful probes now close, including on failed opens.
+
+New shared regressions cover metadata-only runtime planning, duration fallback,
+invalid/overflow hints, master-envelope propagation (including late starts),
+legacy equal power and invalid handle sanitization. Build/test results below do
+not constitute phone listening or gesture validation.
+
+Phone acceptance (pending):
+- Download two tracks, open their playlist pair, set out=0:20, in=0:10, overlap=6s.
+- Preview must begin at out=0:18, overlap out=0:20–0:26 and in=0:10–0:16,
+  then pause at approximately in=0:18. No tap on Mix should be needed.
+- Drag the outgoing white handle to half-way and incoming handle past half-way:
+  the preview must audibly change (possibly a deliberate silent middle).
+- Apply, leave the editor and play the original playlist normally with Automix
+  off: the same saved timing/envelopes must play; another playlist/shuffle must not.
+- Verify retry on an unavailable source; pause/resume, close mid-fade, change pair,
+  reopen, rotate, and start another queue then close the old editor. No orphan deck
+  or late stop may affect the new queue.

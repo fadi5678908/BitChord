@@ -54,4 +54,6 @@
     <string name="transition_stop_preview">■ إيقاف المعاينة</string>
     <string name="transition_preview_notice">تستبدل المعاينة قائمة التشغيل الحالية بهاتين الأغنيتين، وتبدأ قبل التداخل بثانيتين وتتوقف بعده بثانيتين. يمكنك سماع التعديلات قبل حفظها؛ زر التطبيق وحده يجعلها دائمة.</string>
     <string name="transition_preview_failed">تعذّر إكمال الانتقال. تحقّق من مصدر الصوت والمدد وإعدادات الإخراج. المعاينة غير متاحة مع البث الخارجي أو الاستماع الجماعي أو الإخراج المطابق للبت أو مؤقت النوم بنهاية الأغنية.</string>
+    <string name="transition_fine">ضبط دقيق</string>
+    <string name="transition_hide_fine">إخفاء الضبط الدقيق</string>
 </resources>

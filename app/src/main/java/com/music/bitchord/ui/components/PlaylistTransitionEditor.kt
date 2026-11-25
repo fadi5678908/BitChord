@@ -38,7 +38,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
-/** Explicit natural-speed playlist timing; no decorative controls for unimplemented stem separation. */
+/** Source waveforms, audible timing and master-volume automation; no pretend stem controls. */
 @Composable
 fun PlaylistTransitionEditor(playlistId: String, songs: List<Song>, onDismiss: () -> Unit) {
     if (playlistId.isBlank() || songs.size < 2) return
@@ -178,13 +178,14 @@ fun PlaylistTransitionEditor(playlistId: String, songs: List<Song>, onDismiss: (
 @Composable
 private fun TrackTiming(song: Song, label: String, start: Float, length: Float, overlap: Float, accent: Color, enabled: Boolean, maximum: Float,
     controller: MediaController?, outgoing: Boolean, handoff: StemHandoff, elapsed: Float?, onEnvelope: (Float) -> Unit, onChange: (Float) -> Unit) {
+    var fine by remember(song) { mutableStateOf(false) }
     Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 AsyncImage(model = song.thumbnailUrl, contentDescription = null, contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(accent.copy(alpha = 0.15f)))
+                    modifier = Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(accent.copy(alpha = 0.15f)))
                 Column(Modifier.weight(1f)) {
-                    Text(song.title, style = MaterialTheme.typography.titleSmall, maxLines = 2)
+                    Text(song.title, style = MaterialTheme.typography.titleSmall, maxLines = 1)
                     Text(song.artist, style = MaterialTheme.typography.bodySmall, maxLines = 1)
                 }
             }
@@ -195,6 +196,16 @@ private fun TrackTiming(song: Song, label: String, start: Float, length: Float, 
             }
             StudioWaveformTrack(controller, song, start, length, overlap, outgoing, handoff, accent, enabled,
                 elapsed, onChange, onEnvelope)
+            TextButton(onClick = { fine = !fine }, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(if (fine) R.string.transition_hide_fine else R.string.transition_fine))
+            }
+            if (fine) {
+                val envelopeLabel = stringResource(if (outgoing) R.string.transition_master_out else R.string.transition_master_in)
+                Text(envelopeLabel, style = MaterialTheme.typography.labelMedium)
+                Slider(value = if (outgoing) handoff.outgoingUntil else handoff.incomingFrom,
+                    onValueChange = onEnvelope, enabled = enabled,
+                    valueRange = if (outgoing) 0.1f..1f else 0f..0.9f,
+                    modifier = Modifier.semantics { contentDescription = envelopeLabel })
             val safe = start.coerceIn(0f, maximum.coerceAtLeast(0f))
             Slider(value = safe, onValueChange = { onChange((it * 10).roundToInt() / 10f) },
                 valueRange = 0f..maximum.coerceAtLeast(0.1f), enabled = enabled,
@@ -202,6 +213,7 @@ private fun TrackTiming(song: Song, label: String, start: Float, length: Float, 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 TextButton(onClick = { onChange((safe - 1).coerceAtLeast(0f)) }, enabled = enabled) { Text("−1 " + stringResource(R.string.transition_second_unit)) }
                 TextButton(onClick = { onChange((safe + 1).coerceAtMost(maximum)) }, enabled = enabled) { Text("+1 " + stringResource(R.string.transition_second_unit)) }
+            }
             }
         }
     }

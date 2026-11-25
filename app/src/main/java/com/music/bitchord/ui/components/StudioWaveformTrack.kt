@@ -61,7 +61,7 @@ internal fun StudioWaveformTrack(
     val foreground = MaterialTheme.colorScheme.onSurface
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-        Canvas(Modifier.fillMaxWidth().height(136.dp).clipToBounds().pointerInput(region, span, overlap, enabled) {
+        Canvas(Modifier.fillMaxWidth().height(112.dp).clipToBounds().pointerInput(region, span, overlap, enabled) {
             if (!enabled) return@pointerInput
             var envelopeDrag = false
             var dragStart = 0f
@@ -132,10 +132,7 @@ internal fun StudioWaveformTrack(
         Text(stringResource(R.string.transition_wave_unavailable), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
         TextButton(onClick = { retry++ }) { Text(stringResource(R.string.transition_retry)) }
     }
-    Text(stringResource(if (outgoing) R.string.transition_master_out else R.string.transition_master_in), style = MaterialTheme.typography.labelMedium)
-    Slider(value = if (outgoing) handoff.outgoingUntil else handoff.incomingFrom,
-        onValueChange = onEnvelope, enabled = enabled,
-        valueRange = if (outgoing) 0.1f..1f else 0f..0.9f)
+
 }
 
 private fun waveTime(seconds: Float): String {
