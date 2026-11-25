@@ -441,3 +441,15 @@ Phone acceptance (pending):
 - Verify retry on an unavailable source; pause/resume, close mid-fade, change pair,
   reopen, rotate, and start another queue then close the old editor. No orphan deck
   or late stop may affect the new queue.
+
+Verified studio source: `7a8e13993cdfb37d3546b4898f1ebf2e5d1ad3a6`.
+GitHub Actions [45617206193](https://github.com/fadi5678908/BitChord/actions/runs/45617206193)
+succeeded: shared/Android unit-test task step, full dev APK assembly, APK upload
+(6m23s build job). Artifact `bitchord-dev-debug`: ID `15024005498`, 508,256,569
+bytes compressed. English/Arabic XML parsed successfully and all 34 editor string
+references were checked in both locales. The phone acceptance checks above are
+still **pending**, not implied by CI success.
+
+The direct universal test APK is published separately, extracted without a
+rebuild, under release `automix-test-7a8e139`:
+https://github.com/fadi5678908/BitChord/releases/download/automix-test-7a8e139/BitChord-Dev-Automix-universal.apk
