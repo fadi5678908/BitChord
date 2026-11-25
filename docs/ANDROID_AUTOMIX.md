@@ -675,3 +675,56 @@ preparation does not start audio later, and another user queue is not paused by
 an old audition. Compare with original mode at conservative volume. File-backed
 access is more predictable, but neural separation still costs CPU and is not
 assumed instant merely because audio is local.
+
+## Verified playlist-mode build and ARM64 download
+
+Implementation `20dcd5dd724f7a4a92f5301d1755a954f706031e` supersedes the
+historical audition-only limitation above: the saved vocal switch now supplies
+prepared source windows to normal local playlist playback. No physical-phone
+listening result is inferred from this verification.
+
+- Initial implementation `335177d`: run
+  https://github.com/fadi5678908/BitChord/actions/runs/45697070905 passed all
+  stages, including actual two-player transitions and bundled vocal-model tests.
+- Final implementation `20dcd5d`: run
+  https://github.com/fadi5678908/BitChord/actions/runs/45698881487 passed in
+  **13m22s** (build job `139503421260`). Shared and Android unit tests, native
+  regression, API 35 x86_64 instrumentation, APK assembly/upload all succeeded.
+- Instrumentation classes: `LocalStemReconstructionTest` (bundled model/JNI,
+  local WAV decode, prepared playback-port samples and all audition renders),
+  `PlaylistTransitionPlaybackTest` (real ExoPlayer scheduling/handoff for all
+  three modes with global defaults off and zero analysis requests; preference
+  round-trip and legacy migration). The PCM sink unit fixture verifies actual
+  transformed samples, stream-offset accounting and flush cleanup.
+- Source artifact `15061909955`, `bitchord-dev-debug`, **508,433,272 bytes**
+  compressed. This is the multi-ABI build artifact, not the phone download size.
+- ARM64 extraction/publication run
+  https://github.com/fadi5678908/BitChord/actions/runs/45701018077 succeeded,
+  validating ZIP structure and APK signatures before upload. The asset was
+  extracted unchanged from the final verified build, not rebuilt/re-signed.
+
+Download:
+https://github.com/fadi5678908/BitChord/releases/download/automix-test-20dcd5d/BitChord-Dev-Automix-arm64-v8a.apk
+
+Size **141,469,093 bytes**. SHA-256:
+`9c9e56da72717c9e3845c416ad7290f628d0da9bbae4c8567e2229e0c4243fc0`.
+A companion `.apk.sha256` asset is available in the same prerelease.
+Debug signing may differ from earlier builds: back up data before considering
+uninstallation if Android rejects an in-place update.
+
+Phone acceptance procedure:
+1. Reopen a playlist from its page after updating, rather than reusing an old
+   restored generic-BROWSE queue. Disable shuffle and radio/Cast/party/bit-perfect.
+2. Enable global Automix for Automatic defaults, or open the playlist transition
+   editor and Apply an enabled Automatic, Custom or Crossfade profile. Saved
+   profiles work with the global switch off; disabled pairs remain disabled.
+3. For saved separated playback, use two local/downloaded stereo files, select
+   an incoming vocal cue in Custom, enable the saved vocal/accompaniment switch,
+   then Apply. Start sufficiently before the overlap for on-phone preparation;
+   verify the stats readiness/fallback detail and listen through the handoff.
+4. Compare original/vocals/accompaniment audition monitors at moderate volume.
+   Auditions replace the current queue; reopen the actual playlist afterwards.
+   Test cancellation/seek, a second pair, background playback and thermal load.
+5. Confirm that album/search/radio/shuffle playback remains unmixed. Music
+   quality, vocal bleed, rhythm compatibility and Pixel/Android 17 behavior
+   remain listening/device acceptance, not assertions established by sine WAVs.
