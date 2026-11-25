@@ -38,6 +38,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          exec 2> >(tee verification-errors.txt >&2)
+          trap 'status=$?; echo "::error::APK verification failed at line $LINENO: $BASH_COMMAND"; while IFS= read -r line; do echo "::error::$line"; done < <(tail -n 5 verification-errors.txt); exit "$status"' ERR
           FILE=BitChord-Dev-Automix-universal.apk
           SIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n 1)
@@ -57,8 +59,12 @@ jobs:
           if [[ -n "$COMPARE_TAG" ]]; then
             gh release download "$COMPARE_TAG" --pattern "$FILE" --dir previous
             "$SIGNER" verify --print-certs "previous/$FILE" > previous-cert.txt
-            BEFORE=$(grep '^Signer #1 certificate SHA-256 digest:' previous-cert.txt)
-            AFTER=$(grep '^Signer #1 certificate SHA-256 digest:' current-cert.txt)
+            # Recent build-tools label signers with their SDK range instead of #1.
+            BEFORE=$(grep 'certificate SHA-256 digest:' previous-cert.txt | sed 's/.*digest: //' | sort -u)
+            AFTER=$(grep 'certificate SHA-256 digest:' current-cert.txt | sed 's/.*digest: //' | sort -u)
+            test -n "$BEFORE" && test -n "$AFTER"
+            echo "::notice::Previous APK certificate SHA-256: $BEFORE"
+            echo "::notice::Current APK certificate SHA-256: $AFTER"
             {
               printf '\nPrevious release: %s\n%s\nCurrent: %s\n' "$COMPARE_TAG" "$BEFORE" "$AFTER"
               if [[ "$BEFORE" == "$AFTER" ]]; then
