@@ -361,8 +361,12 @@ No Mix tap or popup is required. Reduced-motion and paused-state behavior is
 inherited from the existing handoff component. It disappears with the real
 transition state rather than a timer. Other minimal player layouts are unchanged.
 
-`PlaylistCustomPlaybackTest` adds 12 cases for absolute entry/exit scheduling,
+`PlaylistCustomPlaybackTest` adds 13 cases for absolute entry/exit scheduling,
 disabled migration, full-source bounds, late/seek behavior, identity scoping,
 stale-diagnostic clearing, and preserving the custom renderer flag on waveform
-updates. All 118 isolated Kotlin tests passed. On-device listening, UI and
+updates. All 119 isolated Kotlin tests passed. On-device listening, UI and
 retention tests still need the newly built APK; no new stem separator is present.
+
+Selected custom windows are also checked against both prepared decoder durations.
+The automatic one-third incoming-length cap is not applied to an explicit user
+window; it would otherwise silently shorten a valid transition near a song ending.

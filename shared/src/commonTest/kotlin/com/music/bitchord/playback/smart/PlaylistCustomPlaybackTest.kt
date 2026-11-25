@@ -63,6 +63,13 @@ class PlaylistCustomPlaybackTest {
         assertEquals(0.0, p.incomingCueTime)
     }
 
+    @Test fun aUserSelectedIncomingEndingIsNotSilentlyShortenedToOneThird() {
+        val customPlan = assertNotNull(custom.playbackPlan(200.0, 180.0, 0.0))
+        assertEquals(8_000L, customPlan.incomingFadeLimitMs(8_000L))
+        assertEquals(2_666L, TransitionPlan().incomingFadeLimitMs(8_000L))
+        assertEquals(Long.MAX_VALUE, customPlan.incomingFadeLimitMs(null))
+    }
+
     @Test fun entryKeysDistinguishRemoteDuplicatesWithoutUsingTheTitle() {
         assertNotEquals(playlistTransitionEntry("song", "slot1"), playlistTransitionEntry("song", "slot2"))
         assertEquals("song:4:song:0", playlistTransitionEntry("song", null))

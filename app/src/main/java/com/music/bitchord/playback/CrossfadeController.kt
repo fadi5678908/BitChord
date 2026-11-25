@@ -36,6 +36,7 @@ import com.music.bitchord.playback.smart.forPlaybackStart
 import com.music.bitchord.playback.smart.routingReason
 import com.music.bitchord.playback.smart.PlaylistTransitionDraft
 import com.music.bitchord.playback.smart.playbackPlan
+import com.music.bitchord.playback.smart.incomingFadeLimitMs
 import com.music.bitchord.playback.smart.AutomixSessionPlanner
 import com.music.bitchord.playback.smart.AutomixPlanDiagnostics
 import kotlinx.coroutines.CoroutineScope
@@ -1631,6 +1632,15 @@ class CrossfadeController(
             return
         }
 
+        if (planInFlight?.policyReasons?.contains("playlist-custom-timing") == true) {
+            val actualOut = out.duration.takeIf { it != C.TIME_UNSET && it > 0L } ?: return bail()
+            val actualIn = into.duration.takeIf { it != C.TIME_UNSET && it > 0L } ?: return bail()
+            if (fadeEndMs > actualOut || incomingCueTimeMs + fadeMs > actualIn) {
+                Log.d(TAG, "custom transition refused: selected region exceeds decoded duration")
+                return bail()
+            }
+        }
+
         // Both sinks write seconds ahead of the speaker. The standby fills its
         // whole buffer while it waits here, so its filter has to be at the
         // blend's opening position before that audio is written, not once the
@@ -1811,7 +1821,8 @@ class CrossfadeController(
             .takeIf { it != C.TIME_UNSET && it > 0L }
             ?.minus(incomingCueTimeMs)
             ?.coerceAtLeast(0L)
-        val incomingCap = remainingIncoming?.div(3) ?: Long.MAX_VALUE
+        val incomingCap = planInFlight?.incomingFadeLimitMs(remainingIncoming)
+            ?: (remainingIncoming?.div(3) ?: Long.MAX_VALUE)
         val span = minOf(fadeMs, incomingCap).coerceAtLeast(1L)
         val elapsed = (inClock.read(player) - incomingCueTimeMs).coerceAtLeast(0.0).toFloat()
         // Advanced: [fadeMs] is outgoing time, and a stretched incoming track

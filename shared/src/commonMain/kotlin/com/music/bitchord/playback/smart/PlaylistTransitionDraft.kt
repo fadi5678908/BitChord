@@ -128,3 +128,10 @@ fun PlaylistTransitionDraft.playbackPlan(outgoingDuration: Double, incomingDurat
 /** Matches the original editor's unique-song fallback keys, without conflating stable playlist entries. */
 fun playlistTransitionEntry(trackId: String, entryId: String?): String =
     entryId?.takeIf { it.isNotBlank() }?.let { "entry:$it" } ?: "song:${trackId.length}:$trackId:0"
+
+
+/** Automatic fades reserve most of the incoming song; an explicit user window uses its full selected span. */
+fun TransitionPlan.incomingFadeLimitMs(remainingMs: Long?): Long {
+    val remaining = remainingMs?.coerceAtLeast(0L) ?: return Long.MAX_VALUE
+    return if ("playlist-custom-timing" in policyReasons) remaining else remaining / 3
+}
