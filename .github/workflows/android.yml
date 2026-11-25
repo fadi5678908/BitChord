@@ -11,7 +11,27 @@ on:
         type: string
         default: ''
 
+      verify_release:
+        description: 'Verify an existing universal APK without rebuilding or replacing it (release tag)'
+        required: false
+        type: string
+        default: ''
+      compare_release:
+        description: 'Previous release tag for APK signing comparison'
+        required: false
+        type: string
+        default: ''
+
 jobs:
+  verify-published-apk:
+    if: github.event_name == 'workflow_dispatch' && inputs.verify_release != ''
+    permissions:
+      contents: read
+    uses: ./.github/workflows/verify-android-apk.yml
+    with:
+      release_tag: ${{ inputs.verify_release }}
+      compare_tag: ${{ inputs.compare_release }}
+
   publish-universal:
     if: github.event_name == 'workflow_dispatch' && inputs.universal_from_run != ''
     runs-on: ubuntu-latest
@@ -56,7 +76,7 @@ jobs:
         echo "Universal APK: https://github.com/$GH_REPO/releases/download/$TAG/$FILE" >> "$GITHUB_STEP_SUMMARY"
 
   build-dev-debug:
-    if: github.event_name != 'workflow_dispatch' || inputs.universal_from_run == ''
+    if: github.event_name != 'workflow_dispatch' || (inputs.universal_from_run == '' && inputs.verify_release == '')
     runs-on: ubuntu-latest
 
     steps:
