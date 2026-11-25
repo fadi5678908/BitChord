@@ -16,6 +16,11 @@ on:
         required: false
         type: string
         default: ''
+      install_api:
+        description: 'For verification: Android API level to test installation on a clean emulator'
+        required: false
+        type: string
+        default: ''
       compare_release:
         description: 'Previous release tag for APK signing comparison'
         required: false
@@ -31,6 +36,7 @@ jobs:
     with:
       release_tag: ${{ inputs.verify_release }}
       compare_tag: ${{ inputs.compare_release }}
+      install_api: ${{ inputs.install_api }}
 
   publish-universal:
     if: github.event_name == 'workflow_dispatch' && inputs.universal_from_run != ''
