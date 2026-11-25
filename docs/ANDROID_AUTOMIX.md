@@ -497,3 +497,30 @@ Android emulator." This is not an ARM/Samsung test, an in-place update test, or
 proof of installation on the user's phone. Device model/Android version,
 whether old BitChord Dev is installed, and local download completeness remain
 needed before choosing an installation remedy. No APK was changed or replaced.
+
+### Pixel 6 / Android 17 report
+
+User confirms the old app was removed and identifies their phone as Pixel 6
+running Android 17. Do not continue treating an in-place signing conflict as
+the established cause. The downloaded file size has been requested; no response
+yet. The published universal asset is 247,651,912 bytes, SHA-256
+`788ccff37b07af013e29e1c96f003d1bdeeec3475326b08bb012d33d2a4baee5`.
+
+API 37 emulator attempts 45684252122 and 45684511170 did not reach APK install.
+The SDK catalog inspected with `sdkmanager --list --channel=3` exposed API 36
+images but no API 37 Google APIs x86_64 image. This is a test-environment
+limitation, **not an observed Android 17 installer rejection**. Verification now
+records the catalog and OS/API/ABI and explicitly fails early when the requested
+image is unavailable, rather than obscuring it behind the emulator action.
+
+Published the existing, smaller ARM64 build for Pixel 6 from the same successful
+source build 45617206193 (no application source changes or re-signing). Publish
+run [45684656393](https://github.com/fadi5678908/BitChord/actions/runs/45684656393)
+succeeded and verified ZIP integrity and Android APK signatures before upload:
+- `BitChord-Dev-Automix-arm64-v8a.apk`, **141,392,253 bytes**
+- SHA-256 `a7a6625673605bd82119d484c36020a662bfa517c9868d3406fd621f29243a9c`
+- https://github.com/fadi5678908/BitChord/releases/download/automix-test-7a8e139/BitChord-Dev-Automix-arm64-v8a.apk
+- Matching `.apk.sha256` download is included in the release.
+
+This is a smaller, architecture-specific retry, not a confirmed repair of the
+user's installer error. Actual Pixel 6/Android 17 installation remains untested.
