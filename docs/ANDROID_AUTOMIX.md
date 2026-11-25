@@ -303,3 +303,17 @@ late decoder downgrades using the actual armed plan. The fallback caption says
 beatmatched mix. The planned search still legitimately chooses fallback for
 incompatible or unmeasured pairs. Device listening with the reported song pair
 is necessary to distinguish those cases from remaining bugs.
+
+Follow-up CI verification succeeded for source commit
+`28c8d28d44c9cad3e37f4bef14c49b94121fc704`:
+https://github.com/fadi5678908/BitChord/actions/runs/45513588772
+
+The shared/Android unit-test step, dev APK assembly, and artifact upload all
+report success. Artifact `bitchord-dev-debug`:
+https://github.com/fadi5678908/BitChord/actions/runs/45513588772/artifacts/14976693247
+
+This verifies compilation/build, not phone listening. This APK workflow does
+not restore a stable debug signing key, so Android may reject an in-place
+update from a previous CI dev APK signed by a different generated key. Do not
+recommend uninstalling the user's dev app without preserving its data. The
+production app remains a different package.
